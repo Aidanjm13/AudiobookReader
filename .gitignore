@@ -1,0 +1,16 @@
+# Virtual Environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# VS Code
+.vscode/
+
+# Distribution / Packaging (for later when you use PyInstaller)
+dist/
+build/
+*.spec
