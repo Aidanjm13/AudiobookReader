@@ -1,5 +1,6 @@
 import sys
 import os
+from fileHandling import saveNewBook
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,
     QPushButton, QLabel, QTextEdit, QFileDialog
@@ -12,7 +13,7 @@ class FileLoader(QWidget):
         self.setMinimumSize(500, 400)
 
         # Widgets
-        self.btn = QPushButton("Upload File")
+        self.uploadFileBtn = QPushButton("Upload File")
         self.label = QLabel("No file selected")
         self.label.setWordWrap(True)
         self.text_area = QTextEdit()
@@ -21,13 +22,13 @@ class FileLoader(QWidget):
 
         # Layout
         layout = QVBoxLayout()
-        layout.addWidget(self.btn)
+        layout.addWidget(self.uploadFileBtn)
         layout.addWidget(self.label)
         layout.addWidget(self.text_area)
         self.setLayout(layout)
 
         # Signal
-        self.btn.clicked.connect(self.open_file)
+        self.uploadFileBtn.clicked.connect(self.open_file)
 
     def open_file(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -40,9 +41,10 @@ class FileLoader(QWidget):
     def process_file(self, path):
         ext = os.path.splitext(path)[1].lower()
 
-        if ext == ".pdf":
-            
-        elif ext == ".epub":
+        try:
+            saveNewBook(path)
+        except Exception as e:
+            print(f"Error saving file: {e}")
             
 
 app = QApplication(sys.argv)
