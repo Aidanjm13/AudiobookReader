@@ -1,53 +1,130 @@
-import sys
-import os
-from fileHandling import saveNewBook
-from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout,
-    QPushButton, QLabel, QTextEdit, QFileDialog
-)
+from PySide6.QtWidgets import QMainWindow, QApplication, QPushButton, QGridLayout, QSizePolicy
+from PySide6.QtGui import QIcon
+from PySide6.QtCore import QSize, Qt
+from ui_Audiobook import Ui_MainWindow
 
-class FileLoader(QWidget):
+
+class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("File Loader")
-        self.setMinimumSize(500, 400)
+        self.ui = Ui_MainWindow()
+        self.ui.setupUi(self)
 
-        # Widgets
-        self.uploadFileBtn = QPushButton("Upload File")
-        self.label = QLabel("No file selected")
-        self.label.setWordWrap(True)
-        self.text_area = QTextEdit()
-        self.text_area.setPlaceholderText("File contents will appear here...")
-        self.text_area.setReadOnly(True)
+        self.books_rows = 2
+        self.default_cover_size = QSize(120, 180)   # ideal/preferred size
+        self.min_cover_size = QSize(60, 90)          # floor when shrinking
+        self.cover_spacing = 10
+        self.cover_paths = {}
+        self._sized_once = False
 
-        # Layout
-        layout = QVBoxLayout()
-        layout.addWidget(self.uploadFileBtn)
-        layout.addWidget(self.label)
-        layout.addWidget(self.text_area)
-        self.setLayout(layout)
+        self.cover_size = self.default_cover_size
+        self.setup_books_area()
+        self.load_books()
 
-        # Signal
-        self.uploadFileBtn.clicked.connect(self.open_file)
+    def setup_books_area(self):
+        self.ui.booksScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.ui.booksScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.ui.booksScrollArea.setWidgetResizable(True)
 
-    def open_file(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select a File", "",
-            "eBooks & PDFs (*.epub *.pdf);;All Files (*)"
+        self.ui.scrollAreaWidgetContents.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
-        if path:
-            self.process_file(path)
 
-    def process_file(self, path):
-        ext = os.path.splitext(path)[1].lower()
+        layout = self.ui.scrollAreaWidgetContents.layout()
+        if layout is None:
+            layout = QGridLayout(self.ui.scrollAreaWidgetContents)
+            layout.setContentsMargins(8, 8, 8, 8)
+            layout.setSpacing(self.cover_spacing)
+            layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.books_layout = layout
 
-        try:
-            saveNewBook(path)
-        except Exception as e:
-            print(f"Error saving file: {e}")
-            
+    def calculate_cover_size(self):
+        """Use default size unless the scroll area is too short to fit books_rows at that size."""
+        viewport = self.ui.booksScrollArea.viewport()
+        margins = self.books_layout.contentsMargins()
 
-app = QApplication(sys.argv)
-window = FileLoader()
-window.show()
-sys.exit(app.exec())
+        available_height = viewport.height() - margins.top() - margins.bottom()
+        available_height -= self.cover_spacing * (self.books_rows - 1)
+
+        needed_height = self.default_cover_size.height() * self.books_rows
+
+        # uncomment if you want there to be a maximum size
+        # if available_height >= needed_height:
+        #     return self.default_cover_size
+
+        # not enough room — shrink proportionally to fit
+        scale = available_height / needed_height
+        width = max(int(self.default_cover_size.width() * scale), self.min_cover_size.width())
+        height = max(int(self.default_cover_size.height() * scale), self.min_cover_size.height())
+        return QSize(width, height)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._sized_once:
+            self._sized_once = True
+            self.cover_size = self.calculate_cover_size()
+            self.refresh_cover_sizes()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        new_size = self.calculate_cover_size()
+        if new_size != self.cover_size:
+            self.cover_size = new_size
+            self.refresh_cover_sizes()
+
+    def refresh_cover_sizes(self):
+        for btn in self.cover_paths:
+            btn.setFixedSize(self.cover_size)
+            btn.setIconSize(self.cover_size)
+
+    def load_books(self):
+        books = [
+            {"title": "Dune", "cover": "covers/book1.jpg"},
+            {"title": "Project Hail Mary", "cover": "covers/book2.jpg"},
+            {"title": "Foundation", "cover": "covers/book3.jpg"},
+        ]
+        self.populate_books(books)
+
+    def populate_books(self, books):
+        self.clear_books()
+        self.current_books = books
+        for i, book in enumerate(books):
+            col, row = divmod(i, self.books_rows)
+            btn = self.create_book_button(book["title"], book["cover"])
+            self.books_layout.addWidget(btn, row, col)
+
+    def clear_books(self):
+        while self.books_layout.count():
+            item = self.books_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.cover_paths.clear()
+
+    def create_book_button(self, title, cover_path):
+        btn = QPushButton()
+        btn.setFixedSize(self.cover_size)
+        btn.setIconSize(self.cover_size)
+        btn.setToolTip(title)
+        btn.setFlat(True)
+
+        icon = QIcon(cover_path)
+        if icon.isNull():
+            print(f"Warning: could not load cover image: {cover_path}")
+            btn.setText(title)
+        else:
+            btn.setIcon(icon)
+
+        btn.clicked.connect(lambda checked=False, t=title: self.open_book(t))
+        self.cover_paths[btn] = cover_path
+        return btn
+
+    def open_book(self, title):
+        print(f"Opening {title}")
+
+
+if __name__ == "__main__":
+    app = QApplication([])
+    window = MainWindow()
+    window.show()
+    app.exec()
