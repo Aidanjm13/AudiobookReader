@@ -1,7 +1,8 @@
-from PySide6.QtWidgets import QMainWindow, QApplication, QPushButton, QGridLayout, QSizePolicy
+from PySide6.QtWidgets import QMainWindow, QApplication, QPushButton, QGridLayout, QSizePolicy, QFileDialog
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import QSize, Qt
 from ui_Audiobook import Ui_MainWindow
+from fileHandling import saveNewBook
 
 
 class MainWindow(QMainWindow):
@@ -9,6 +10,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+
+        self.ui.uploadFilesButton.clicked.connect(self.on_upload_clicked)
 
         self.books_rows = 2
         self.default_cover_size = QSize(120, 180)   # ideal/preferred size
@@ -20,6 +23,17 @@ class MainWindow(QMainWindow):
         self.cover_size = self.default_cover_size
         self.setup_books_area()
         self.load_books()
+
+    def on_upload_clicked(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select an audiobook file",
+            "",  # starting directory ("" = default/last used)
+            "Audio Files (*.mp3 *.m4a *.wav);;All Files (*)"
+        )
+        if file_path:  # empty string if user cancelled
+            saveNewBook(file_path)
+            self.current_file = file_path
 
     def setup_books_area(self):
         self.ui.booksScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)

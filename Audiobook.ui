@@ -39,7 +39,42 @@
        <attribute name="title">
         <string>Books</string>
        </attribute>
-       <layout class="QHBoxLayout" name="horizontalLayout_3">
+       <layout class="QVBoxLayout" name="verticalLayout_2" stretch="1,16">
+        <item>
+         <layout class="QHBoxLayout" name="topbar" stretch="1,8">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QPushButton" name="uploadFilesButton">
+            <property name="baseSize">
+             <size>
+              <width>0</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Upload Files</string>
+            </property>
+            <property name="iconSize">
+             <size>
+              <width>16</width>
+              <height>16</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QWidget" name="widget" native="true"/>
+          </item>
+         </layout>
+        </item>
         <item>
          <widget class="QScrollArea" name="booksScrollArea">
           <property name="verticalScrollBarPolicy">
@@ -53,8 +88,8 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>946</width>
-             <height>558</height>
+             <width>948</width>
+             <height>522</height>
             </rect>
            </property>
           </widget>
