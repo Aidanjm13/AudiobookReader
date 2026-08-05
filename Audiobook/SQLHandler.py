@@ -2,11 +2,20 @@ from sqlalchemy import create_engine, ForeignKey, String, Integer, DateTime
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column, relationship, sessionmaker
 from datetime import datetime
 from typing import List, Optional
+from fileHandling import getAppdataFolderPath
+import os
 
-engine = create_engine("sqlite:///app.db")
+def getSQLPath():
+    appdata_folder = getAppdataFolderPath()
+    sql_file_path = os.path.join(appdata_folder, "app.db")
+    return sql_file_path
+
+
+engine = create_engine(f"sqlite:///{getSQLPath()}")
 Base = declarative_base()
 Session = sessionmaker(bind=engine)
 
+#table
 #current data for a book
 class Book(Base):
     __tablename__ = "books"
@@ -14,20 +23,97 @@ class Book(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     file_type: Mapped[str] = mapped_column(String(100), unique=False, index=False) #the file type epub, pdf, text?
     file_path: Mapped[str] = mapped_column(String(4096), unique=True, index=True) #the local filepath of the book file
-    image_path: Mapped[str] = mapped_column(String(4096), unique=True, index=True) #the local filepath of the books cover image
-    title: Mapped[str] = mapped_column(String(100), unique=False, index=True) #title of the book
-    author: Mapped[str] = mapped_column(String(100), unique=False, index=True) #author of the book
-    language: Mapped[str] = mapped_column(String(100), unique=False, index=True) #the language the book is written in
+    image_path: Mapped[str] = mapped_column(String(4096), unique=True, index=True, nullable=True) #the local filepath of the books cover image
+    title: Mapped[str] = mapped_column(String(100), unique=False, index=True, default="") #title of the book
+    author: Mapped[str] = mapped_column(String(100), unique=False, index=True, default="") #author of the book
+    language: Mapped[str] = mapped_column(String(100), unique=False, index=True, default="") #the language the book is written in
     last_accessed: Mapped[datetime] = mapped_column(index=True, unique=False) #when the book was last accessed
-    position: Mapped[int] = mapped_column(String(100), unique=False) #the position you are at in the book for epub: "chapter:word" 
+    position: Mapped[str] = mapped_column(String(100), unique=False, default="0:0") #the position you are at in the book for epub: "chapter:word" 
 
+#table
 #settings presets, will allow for multiple presets to swap between
 class Settings(Base):
     __tablename__ = "settings"
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=False, index=True)
-    speed: Mapped[int] = mapped_column(Integer, unique=False)
-    voice: Mapped[str] = mapped_column(String(100), unique=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), unique=False, index=True) #name of the preset
+    speed: Mapped[int] = mapped_column(Integer, unique=False) #speed of the audiobook reading
+    voice: Mapped[str] = mapped_column(String(100), unique=False, index=True) #name of the audiobook voice
+    font_size: Mapped[int] = mapped_column(Integer, unique=False) #size of the text
+    font_style: Mapped[str] = mapped_column(String(100), unique=False, index=True) #name of the text font
 
-Base.metadata.create_all(engine)
+#creates database tables if needed
+def init_db():
+    Base.metadata.create_all(engine)
+
+#insert row in books table
+def add_book(file_type, file_path, image_path, title, author, language, position="0:0"):
+    """Insert a new Book row and return the created object's id."""
+    with Session() as session:
+        book = Book(
+            file_type=file_type,
+            file_path=file_path,
+            image_path=image_path,
+            title=title,
+            author=author,
+            language=language,
+            last_accessed=datetime.now(),
+            position=position,
+        )
+        session.add(book)
+        session.commit()
+        return book.id
+
+def update_book(book_id, **fields):
+    """
+    Update fields on an existing Book row.
+    Usage: update_book(3, title="New Title", position="5:120")
+    """
+    with Session() as session:
+        book = session.get(Book, book_id)
+        if book is None:
+            raise ValueError(f"No book with id {book_id}")
+
+        for key, value in fields.items():
+            setattr(book, key, value)
+
+        session.commit()
+
+def update_book_position(book_id, position):
+    with Session() as session:
+        book = session.get(Book, book_id)
+        if book is None:
+            raise ValueError(f"No book with id {book_id}")
+        book.position = position
+        book.last_accessed = datetime.now()
+        session.commit()
+
+def delete_book(book_id):
+    with Session() as session:
+        book = session.get(Book, book_id)
+        if book is None:
+            return  # already gone, nothing to do
+        session.delete(book)
+        session.commit()
+
+#insert row in settings table
+def add_settings(name, speed, voice, font_size, font_style):
+    with Session() as session:
+        settings = Settings(
+            name=name,
+            speed=speed,
+            voice=voice,
+            font_size=font_size,
+            font_style=font_style,
+        )
+        session.add(settings)
+        session.commit()
+        return settings.id
+
+def delete_settings(settings_id):
+    with Session() as session:
+        settings = session.get(Settings, settings_id)
+        if settings is None:
+            return
+        session.delete(settings)
+        session.commit()

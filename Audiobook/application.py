@@ -3,10 +3,15 @@ from PySide6.QtGui import QIcon
 from PySide6.QtCore import QSize, Qt
 from ui_Audiobook import Ui_MainWindow
 from fileHandling import saveNewBook
+from SQLHandler import init_db, add_book
+from pathlib import Path
 
+SUPPORTED_FILE_TYPES = {"epub"} #currently supported file types
 
 class MainWindow(QMainWindow):
     def __init__(self):
+        init_db()
+
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
@@ -29,10 +34,14 @@ class MainWindow(QMainWindow):
             self,
             "Select an audiobook file",
             "",  # starting directory ("" = default/last used)
-            "Audio Files (*.mp3 *.m4a *.wav);;All Files (*)"
+            "Books (*.epub *.pdf *.txt);;All Files (*)"
         )
         if file_path:  # empty string if user cancelled
-            saveNewBook(file_path)
+            ext = Path(file_path).suffix.lower().lstrip(".")
+            if ext not in SUPPORTED_FILE_TYPES:
+                raise ValueError(f"Unsupported file type: {ext}")
+            newBookPath = saveNewBook(file_path)
+            add_book(ext, newBookPath, None, None, None, None, "0:0")
             self.current_file = file_path
 
     def setup_books_area(self):
