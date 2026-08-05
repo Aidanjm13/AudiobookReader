@@ -128,3 +128,9 @@ def get_settings(settings_id):
     """Fetch a single Settings preset by id. Returns None if not found."""
     with Session() as session:
         return session.get(Settings, settings_id)
+
+#returns a list of book ids, titles, book path, and cover image path for the library
+def get_books_by_accessed():
+    with Session() as session:
+        books = session.query(Book).order_by(Book.last_accessed.desc()).all()
+        return [{"id": book.id, "title": book.title, "path": book.file_path, "cover": book.image_path} for book in books]

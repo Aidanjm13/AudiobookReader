@@ -3,9 +3,10 @@ from PySide6.QtGui import QIcon
 from PySide6.QtCore import QSize, Qt
 from ui_Audiobook import Ui_MainWindow
 from fileHandling import saveNewBook
-from SQLHandler import init_db, add_book
+from SQLHandler import init_db, add_book, get_books_by_accessed
 from pathlib import Path
-from epubReader import getBook, getCoverImagePath, getLanguages, getCreators, getTitles
+from epubReader import getBook, getCoverImagePath, getLanguages, getCreators, getTitles, save_cover_image
+import os
 
 SUPPORTED_FILE_TYPES = {"epub"} #currently supported file types
 
@@ -43,8 +44,9 @@ class MainWindow(QMainWindow):
                 raise ValueError(f"Unsupported file type: {ext}")
             newBookPath = saveNewBook(file_path)
             book = getBook(newBookPath)
-            add_book(ext, newBookPath, getCoverImagePath(book), getTitles(book)[0], getCreators(book)[0], getLanguages(book)[0], "0:0")
+            add_book(ext, newBookPath, save_cover_image(book,os.path.dirname(newBookPath)), getTitles(book)[0], getCreators(book)[0], getLanguages(book)[0], "0:0")
             self.current_file = file_path
+            self.load_books()
 
     def setup_books_area(self):
         self.ui.booksScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -103,11 +105,7 @@ class MainWindow(QMainWindow):
             btn.setIconSize(self.cover_size)
 
     def load_books(self):
-        books = [
-            {"title": "Dune", "cover": "covers/book1.jpg"},
-            {"title": "Project Hail Mary", "cover": "covers/book2.jpg"},
-            {"title": "Foundation", "cover": "covers/book3.jpg"},
-        ]
+        books = get_books_by_accessed() #[{"id": book.id, "title": book.title, "path": book.file_path, "cover": book.image_path}]
         self.populate_books(books)
 
     def populate_books(self, books):
@@ -115,7 +113,7 @@ class MainWindow(QMainWindow):
         self.current_books = books
         for i, book in enumerate(books):
             col, row = divmod(i, self.books_rows)
-            btn = self.create_book_button(book["title"], book["cover"])
+            btn = self.create_book_button(book["id"], book["title"], book["path"], book["cover"])
             self.books_layout.addWidget(btn, row, col)
 
     def clear_books(self):
@@ -126,7 +124,7 @@ class MainWindow(QMainWindow):
                 widget.deleteLater()
         self.cover_paths.clear()
 
-    def create_book_button(self, title, cover_path):
+    def create_book_button(self, id, title, path, cover_path):
         btn = QPushButton()
         btn.setFixedSize(self.cover_size)
         btn.setIconSize(self.cover_size)
@@ -140,12 +138,12 @@ class MainWindow(QMainWindow):
         else:
             btn.setIcon(icon)
 
-        btn.clicked.connect(lambda checked=False, t=title: self.open_book(t))
+        btn.clicked.connect(lambda checked=False, i=id: self.open_book(id))
         self.cover_paths[btn] = cover_path
         return btn
 
-    def open_book(self, title):
-        print(f"Opening {title}")
+    def open_book(self, id):
+        print(f"Opening {id}")
 
 
 if __name__ == "__main__":

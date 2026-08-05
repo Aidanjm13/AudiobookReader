@@ -2,6 +2,7 @@ from fileHandling import getAppdataFolderPath
 import ebooklib
 from ebooklib import epub
 from lxml import html
+import os
 
 #returns the ebooklib book object with book path
 def getBook(book_path):
@@ -104,6 +105,24 @@ def getCoverImagePath(book):
             return item.get_name()
 
     return None
+
+#gets the cover image from the epub, and saves it as an actual usable image next to the book file
+#outputs the path to that image
+def save_cover_image(book, bookFolder):
+    """Extract the cover image from an epub and save it to disk. Returns the saved path."""
+    cover_href = getCoverImagePath(book)
+    if cover_href is None:
+        return None
+    ext = os.path.splitext(cover_href)[1]
+    output_path = os.path.join(bookFolder, f"cover{ext}")
+    item = book.get_item_with_href(cover_href)
+    if item is None:
+        return None
+
+    with open(output_path, "wb") as f:
+        f.write(item.get_content())
+
+    return output_path
 
 #retrieves the actual image item given the path returned by getCoverImagePath
 def getCoverImage(book, path):
