@@ -117,3 +117,14 @@ def delete_settings(settings_id):
             return
         session.delete(settings)
         session.commit()
+
+def get_book(book_id):
+    """Fetch a single Book by id. Returns None if not found."""
+    with Session() as session:
+        return session.get(Book, book_id)
+
+
+def get_settings(settings_id):
+    """Fetch a single Settings preset by id. Returns None if not found."""
+    with Session() as session:
+        return session.get(Settings, settings_id)

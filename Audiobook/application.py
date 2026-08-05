@@ -5,6 +5,7 @@ from ui_Audiobook import Ui_MainWindow
 from fileHandling import saveNewBook
 from SQLHandler import init_db, add_book
 from pathlib import Path
+from epubReader import getBook, getCoverImagePath, getLanguages, getCreators, getTitles
 
 SUPPORTED_FILE_TYPES = {"epub"} #currently supported file types
 
@@ -41,7 +42,8 @@ class MainWindow(QMainWindow):
             if ext not in SUPPORTED_FILE_TYPES:
                 raise ValueError(f"Unsupported file type: {ext}")
             newBookPath = saveNewBook(file_path)
-            add_book(ext, newBookPath, None, None, None, None, "0:0")
+            book = getBook(newBookPath)
+            add_book(ext, newBookPath, getCoverImagePath(book), getTitles(book)[0], getCreators(book)[0], getLanguages(book)[0], "0:0")
             self.current_file = file_path
 
     def setup_books_area(self):
