@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QMainWindow, QApplication, QPushButton, QGridLayou
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import QSize, Qt
 from ui_Audiobook import Ui_MainWindow
+from ui_BookWindow import Ui_BookWindow
 from fileHandling import saveNewBook
 from SQLHandler import init_db, add_book, get_books_by_accessed
 from pathlib import Path
@@ -30,6 +31,8 @@ class MainWindow(QMainWindow):
         self.cover_size = self.default_cover_size
         self.setup_books_area()
         self.load_books()
+
+        self.openBookWindows = []
 
     def on_upload_clicked(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -144,7 +147,17 @@ class MainWindow(QMainWindow):
 
     def open_book(self, id):
         print(f"Opening {id}")
+        new_window = BookWindow(book_id = id)
+        new_window.show()
+        self.openBookWindows.append(new_window)
 
+
+class BookWindow(QMainWindow):
+    def __init__(self, book_id, parent=None):
+        super().__init__(parent)
+        self.ui = Ui_BookWindow()
+        self.ui.setupUi(self)
+        self.id = book_id
 
 if __name__ == "__main__":
     app = QApplication([])

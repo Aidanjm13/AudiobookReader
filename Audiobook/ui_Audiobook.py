@@ -92,7 +92,7 @@ class Ui_MainWindow(object):
     # setupUi
 
     def retranslateUi(self, MainWindow):
-        MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"MainWindow", None))
+        MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"AudiobookLibrary", None))
         self.uploadFilesButton.setText(QCoreApplication.translate("MainWindow", u"Upload Files", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.Books), QCoreApplication.translate("MainWindow", u"Books", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.Settings), QCoreApplication.translate("MainWindow", u"Settings", None))
