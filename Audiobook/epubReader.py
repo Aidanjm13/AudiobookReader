@@ -2,7 +2,11 @@ from fileHandling import getAppdataFolderPath
 import ebooklib
 from ebooklib import epub
 from lxml import html
+import tinycss2
 import os
+import copy
+import posixpath
+from urllib.parse import unquote
 
 #returns the ebooklib book object with book path
 def getBook(book_path):
@@ -35,19 +39,19 @@ def getLanguages(book):
 
 #internal helper: flattens book.toc (which can be nested via Section groups)
 #into a flat list of (title, href) tuples, in reading order
-def _flattenToc(tocEntries):
+def flattenToc(tocEntries):
     flat = []
     for entry in tocEntries:
         if isinstance(entry, tuple):
             section, children = entry
             flat.append((section.title, getattr(section, 'href', None)))
-            flat.extend(_flattenToc(children))
+            flat.extend(flattenToc(children))
         else:
             flat.append((entry.title, entry.href))
     return flat
 
 #internal helper: returns chapter document items in spine (reading) order, skipping nav pages
-def _getSpineDocuments(book):
+def getSpineDocuments(book):
     idToItem = {item.get_id(): item for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT)}
     ordered = []
     for spineId, _linear in book.spine:
@@ -56,33 +60,149 @@ def _getSpineDocuments(book):
             ordered.append(item)
     return ordered
 
-#gets the names of every chapter, returns list of chapter titles in reading order
-def getChapterNames(book):
+def _normalizeHref(href):
+    return unquote(posixpath.basename(href.split('#')[0]))
+
+# Returns a list the same length as getSpineDocuments(book) -- one entry
+# per spine document, in reading order. Entry is the chapter title if the
+# TOC names that document, else None. Use this to build your clickable
+# chapter list (filter out the Nones); use plain spine index for playback
+# order regardless of title.
+def getSectionTitles(book):
+    documents = getSpineDocuments(book)
+    titleByHref = {}
     if book.toc:
-        return [title for title, href in _flattenToc(book.toc) if title]
-    # no toc defined in this epub - fall back to numbering by spine position
-    return [f"Chapter {i + 1}" for i in range(len(_getSpineDocuments(book)))]
+        for title, href in flattenToc(book.toc):
+            if not title:
+                continue
+            key = _normalizeHref(href)
+            titleByHref.setdefault(key, title)
+    return [titleByHref.get(_normalizeHref(item.get_name())) for item in documents]
 
-#returns the plain-text content of a chapter, can enter either the chapter
-#number (0-based int) or name (str, matching a value from getChapterNames)
-def getChapterContent(book, chapter):
-    documents = _getSpineDocuments(book)
+# Parses every CSS stylesheet in the EPUB into a {class_name: alignment}
+# map. Best-effort: only looks at simple class selectors (".foo", "p.foo")
+# and the text-align property -- not a full CSS cascade, but covers how
+# alignment is set in the vast majority of real EPUBs.
+def getAlignmentMap(book):
+    import ebooklib
+    alignMap = {}
+    for item in book.get_items_of_type(ebooklib.ITEM_STYLE):
+        css = item.get_content().decode('utf-8', errors='ignore')
+        rules = tinycss2.parse_stylesheet(css, skip_whitespace=True, skip_comments=True)
+        for rule in rules:
+            if rule.type != 'qualified-rule':
+                continue
+            prelude = tinycss2.serialize(rule.prelude)
+            declarations = tinycss2.parse_declaration_list(rule.content)
+            align = None
+            for decl in declarations:
+                if decl.type == 'declaration' and decl.lower_name == 'text-align':
+                    align = tinycss2.serialize(decl.value).strip()
+            if not align:
+                continue
+            for cls in prelude.split(','):
+                cls = cls.strip()
+                if '.' in cls:
+                    className = cls.split('.')[-1].split(':')[0].strip()
+                    if className:
+                        alignMap[className] = align
+    return alignMap
 
+_BLOCK_TAGS = {'p', 'div', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
+_IMAGE_TAGS = {'img', 'image'}
+
+# Splits a single block element's text on <br/><br/> (a real paragraph
+# break in poorly-structured EPUBs that skip <p> tags) vs. lone <br/>
+# (a soft line break -- poetry, addresses -- which collapses to a space).
+# lxml's text_content() silently drops <br/> entirely otherwise, gluing
+# separate paragraphs into one run-on string.
+def _blockToParagraphs(el):
+    el = copy.deepcopy(el)
+    for br in el.iter('br'):
+        br.tail = '\n' + (br.tail or '')
+    raw = el.text_content()
+    chunks = [c.strip() for c in raw.split('\n\n')]
+    paragraphs = []
+    for chunk in chunks:
+        text = ' '.join(chunk.split())
+        if text:
+            paragraphs.append(text)
+    return paragraphs
+
+# Plain <img src=...> uses `src`; SVG-wrapped covers use
+# <image xlink:href=...> (sometimes just `href`) instead -- lxml's HTML
+# parser reports these as literal attribute names, not namespaced.
+def _getImageSrc(el):
+    return el.get('src') or el.get('xlink:href') or el.get('href')
+
+def _resolveHref(chapterItem, relSrc):
+    chapterDir = posixpath.dirname(chapterItem.get_name())
+    return posixpath.normpath(posixpath.join(chapterDir, relSrc))
+
+# Fetches the actual image bytes for a path returned in an image block's
+# 'path' field. Call this lazily, only when you're about to display
+# that specific image, not up front for every block.
+def getImageData(book, path):
+    item = book.get_item_with_href(path)
+    if item is None:
+        return None
+    return item.get_content(), item.media_type
+
+# Same lookup semantics as getChapterContent (int index or TOC title).
+# Returns ordered blocks: text ({'type':'text','tag':,'text':,'align':})
+# and images ({'type':'image','data':bytes,'mime':str,'alt':str}),
+# interleaved exactly as they appear in the source markup.
+def getChapterBlocks(book, chapter, alignMap=None):
+    if alignMap is None:
+        alignMap = getAlignmentMap(book)
+
+    documents = getSpineDocuments(book)
     if isinstance(chapter, int):
         if chapter < 0 or chapter >= len(documents):
             return None
         item = documents[chapter]
     else:
-        tocFlat = _flattenToc(book.toc) if book.toc else []
+        tocFlat = flattenToc(book.toc) if book.toc else []
         href = next((h for title, h in tocFlat if title == chapter), None)
         if href is None:
             return None
-        item = book.get_item_with_href(href.split('#')[0])  # strip in-page anchor
+        item = book.get_item_with_href(href.split('#')[0])
         if item is None:
             return None
 
     tree = html.fromstring(item.get_content())
-    return tree.text_content().strip()
+    blocks = []
+    for el in tree.iter():
+        if el.tag in _IMAGE_TAGS:
+            src = _getImageSrc(el)
+            if not src:
+                continue
+            path = _resolveHref(item, src)
+            if book.get_item_with_href(path) is not None:  # confirm it actually exists
+                blocks.append({'type': 'image', 'path': path, 'alt': el.get('alt', '')})
+            continue
+
+        if el.tag not in _BLOCK_TAGS:
+            continue
+        if any(a.tag in _BLOCK_TAGS for a in el.iterancestors()):
+            continue
+
+        align = None
+        style = el.get('style') or ''
+        if 'text-align' in style:
+            for part in style.split(';'):
+                if 'text-align' in part:
+                    align = part.split(':')[1].strip()
+        if align is None:
+            for cls in (el.get('class') or '').split():
+                if cls in alignMap:
+                    align = alignMap[cls]
+                    break
+
+        for text in _blockToParagraphs(el):
+            blocks.append({'type': 'text', 'tag': el.tag, 'text': text, 'align': align})
+
+    return blocks
 
 #gets the internal epub path to the cover/front-page image, for fast retrieval later
 def getCoverImagePath(book):

@@ -4,7 +4,7 @@ from PySide6.QtCore import QSize, Qt
 from ui_Audiobook import Ui_MainWindow
 from ui_BookWindow import Ui_BookWindow
 from fileHandling import saveNewBook
-from SQLHandler import init_db, add_book, get_books_by_accessed
+from SQLHandler import init_db, add_book, get_books_by_accessed, get_book
 from pathlib import Path
 from epubReader import getBook, getCoverImagePath, getLanguages, getCreators, getTitles, save_cover_image
 import os
@@ -157,7 +157,11 @@ class BookWindow(QMainWindow):
         super().__init__(parent)
         self.ui = Ui_BookWindow()
         self.ui.setupUi(self)
-        self.id = book_id
+        self.databaseBook = get_book(book_id)
+        position = self.databaseBook.position.split(":")
+        section = int(position[0])
+        sentence = int(position[1])
+        self.ui.TextArea
 
 if __name__ == "__main__":
     app = QApplication([])
