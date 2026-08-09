@@ -47,7 +47,8 @@ class MainWindow(QMainWindow):
                 raise ValueError(f"Unsupported file type: {ext}")
             newBookPath = saveNewBook(file_path)
             book = getBook(newBookPath)
-            add_book(ext, newBookPath, save_cover_image(book,os.path.dirname(newBookPath)), getTitles(book)[0], getCreators(book)[0], getLanguages(book)[0], "0:0")
+            ##FIX ME: add protection in case of no titles, creators, etc..
+            add_book(ext, newBookPath, save_cover_image(book,os.path.dirname(newBookPath)), getTitles(book)[0], getCreators(book)[0], getLanguages(book)[0], 0, 0)
             self.current_file = file_path
             self.load_books()
 
@@ -158,9 +159,8 @@ class BookWindow(QMainWindow):
         self.ui = Ui_BookWindow()
         self.ui.setupUi(self)
         self.databaseBook = get_book(book_id)
-        position = self.databaseBook.position.split(":")
-        section = int(position[0])
-        sentence = int(position[1])
+        section = self.databaseBook.chapter
+        sentence = self.databaseBook.sentence
         self.ui.TextArea
 
 if __name__ == "__main__":

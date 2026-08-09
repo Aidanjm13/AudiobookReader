@@ -28,7 +28,8 @@ class Book(Base):
     author: Mapped[str] = mapped_column(String(100), unique=False, index=True, default="") #author of the book
     language: Mapped[str] = mapped_column(String(100), unique=False, index=True, default="") #the language the book is written in
     last_accessed: Mapped[datetime] = mapped_column(index=True, unique=False) #when the book was last accessed
-    position: Mapped[str] = mapped_column(String(100), unique=False, default="0:0") #the position you are at in the book for epub: "chapter:word" 
+    chapter: Mapped[int] = mapped_column(Integer) #the chapter you are at in the book for epub, page for pdf
+    sentence: Mapped[int] = mapped_column(Integer) #the sentence you are at in the book
 
 #table
 #settings presets, will allow for multiple presets to swap between
@@ -47,7 +48,7 @@ def init_db():
     Base.metadata.create_all(engine)
 
 #insert row in books table
-def add_book(file_type, file_path, image_path, title, author, language, position="0:0"):
+def add_book(file_type, file_path, image_path, title, author, language, chapter, sentence):
     """Insert a new Book row and return the created object's id."""
     with Session() as session:
         book = Book(
@@ -58,7 +59,8 @@ def add_book(file_type, file_path, image_path, title, author, language, position
             author=author,
             language=language,
             last_accessed=datetime.now(),
-            position=position,
+            chapter = chapter,
+            sentence = sentence
         )
         session.add(book)
         session.commit()
