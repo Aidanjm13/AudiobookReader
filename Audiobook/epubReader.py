@@ -7,6 +7,12 @@ import os
 import copy
 import posixpath
 from urllib.parse import unquote
+import pysbd
+from PySide6.QtWidgets import QTextEdit
+from PySide6.QtGui import QTextCursor, QTextBlockFormat, QTextDocument, QImage
+from PySide6.QtCore import Qt, QUrl, QSize
+from dataclasses import dataclass
+
 
 #returns the ebooklib book object with book path
 def getBook(book_path):
@@ -39,13 +45,13 @@ def getLanguages(book):
 
 #internal helper: flattens book.toc (which can be nested via Section groups)
 #into a flat list of (title, href) tuples, in reading order
-def flattenToc(tocEntries):
+def _flattenToc(tocEntries):
     flat = []
     for entry in tocEntries:
         if isinstance(entry, tuple):
             section, children = entry
             flat.append((section.title, getattr(section, 'href', None)))
-            flat.extend(flattenToc(children))
+            flat.extend(_flattenToc(children))
         else:
             flat.append((entry.title, entry.href))
     return flat
@@ -72,7 +78,7 @@ def getSectionTitles(book):
     documents = getSpineDocuments(book)
     titleByHref = {}
     if book.toc:
-        for title, href in flattenToc(book.toc):
+        for title, href in _flattenToc(book.toc):
             if not title:
                 continue
             key = _normalizeHref(href)
@@ -162,7 +168,7 @@ def getChapterBlocks(book, chapter, alignMap=None):
             return None
         item = documents[chapter]
     else:
-        tocFlat = flattenToc(book.toc) if book.toc else []
+        tocFlat = _flattenToc(book.toc) if book.toc else []
         href = next((h for title, h in tocFlat if title == chapter), None)
         if href is None:
             return None
@@ -247,3 +253,224 @@ def save_cover_image(book, bookFolder):
 #retrieves the actual image item given the path returned by getCoverImagePath
 def getCoverImage(book, path):
     return book.get_item_with_href(path)
+
+_segmenter = pysbd.Segmenter(language='en', clean=False)
+
+_ALIGN_MAP = {
+    'left': Qt.AlignLeft,
+    'center': Qt.AlignHCenter,
+    'right': Qt.AlignRight,
+    'justify': Qt.AlignJustify,
+    None: Qt.AlignLeft,
+}
+
+def split_sentences(text, language="en"):
+    text = text.strip()
+    if not text:
+        return []
+    segmenter = _segmenter if language == "en" else pysbd.Segmenter(language=language, clean=False)
+    return [s.strip() for s in segmenter.segment(text) if s.strip()]
+
+def getChapterBlocksIter(book, chapter, alignMap=None):
+    if alignMap is None:
+        alignMap = getAlignmentMap(book)
+
+    documents = getSpineDocuments(book)
+    if isinstance(chapter, int):
+        if chapter < 0 or chapter >= len(documents):
+            return
+        item = documents[chapter]
+    else:
+        tocFlat = _flattenToc(book.toc) if book.toc else []
+        href = next((h for title, h in tocFlat if title == chapter), None)
+        if href is None:
+            return
+        item = book.get_item_with_href(href.split('#')[0])
+        if item is None:
+            return
+
+    tree = html.fromstring(item.get_content())
+    for el in tree.iter():
+        if el.tag in _IMAGE_TAGS:
+            src = _getImageSrc(el)
+            if not src:
+                continue
+            path = _resolveHref(item, src)
+            if book.get_item_with_href(path) is not None:
+                yield {'type': 'image', 'path': path, 'alt': el.get('alt', '')}
+            continue
+
+        if el.tag not in _BLOCK_TAGS:
+            continue
+        if any(a.tag in _BLOCK_TAGS for a in el.iterancestors()):
+            continue
+
+        align = None
+        style = el.get('style') or ''
+        if 'text-align' in style:
+            for part in style.split(';'):
+                if 'text-align' in part:
+                    align = part.split(':')[1].strip()
+        if align is None:
+            for cls in (el.get('class') or '').split():
+                if cls in alignMap:
+                    align = alignMap[cls]
+                    break
+
+        for text in _blockToParagraphs(el):
+            yield {'type': 'text', 'tag': el.tag, 'text': text, 'align': align}
+
+def blocksToItemsIter(blocksIter):
+    for block in blocksIter:
+        if block['type'] == 'image':
+            yield {'type': 'image', 'path': block['path'], 'alt': block.get('alt', ''),
+                   'align': block.get('align', 'center'), 'newParagraph': True}
+            continue
+        for i, s in enumerate(split_sentences(block['text'])):
+            yield {'type': 'text', 'text': s, 'align': block['align'], 'newParagraph': (i == 0)}
+
+def _fitWordBoundary(doc, cursor, pageHeight, text):
+    words = text.split(' ')
+    fitCount = 0
+    acc = ''
+    for n in range(1, len(words) + 1):
+        trial = ' '.join(words[:n])
+        cursor.insertText(trial[len(acc):])
+        acc = trial
+        if doc.size().height() > pageHeight:
+            cursor.movePosition(QTextCursor.End)
+            for _ in range(len(trial) - len(' '.join(words[:n - 1]))):
+                cursor.deletePreviousChar()
+            fitCount = n - 1
+            break
+        fitCount = n
+    else:
+        fitCount = len(words)
+    return fitCount, ' '.join(words[:fitCount])
+
+def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn):
+    doc = textEdit.document()
+    doc.clear()
+    doc.setTextWidth(textEdit.viewport().width())
+    pageHeight = textEdit.viewport().height()
+    cursor = QTextCursor(doc)
+    cursor.movePosition(QTextCursor.Start)
+
+    firstInsert = True
+    placed = []
+
+    def nextItem():
+        if pendingItem is not None and firstInsert:
+            return pendingItem
+        return next(itemsIter, None)
+
+    item = nextItem()
+    while item is not None:
+        offset = pendingOffset if firstInsert else 0
+        posBefore = cursor.position()
+
+        blockFmt = QTextBlockFormat()
+        blockFmt.setAlignment(_ALIGN_MAP.get(item.get('align'), Qt.AlignLeft))
+        if item['newParagraph'] and not firstInsert:
+            cursor.insertBlock(blockFmt)
+        elif firstInsert:
+            cursor.setBlockFormat(blockFmt)
+
+        if item['type'] == 'image':
+            data, mime = getImageDataFn(book, item['path'])
+            image = QImage.fromData(data)
+            if not image.isNull():
+                margin = doc.documentMargin() * 2
+                maxWidth = max(textEdit.viewport().width() - margin, 1)
+                maxHeight = max(pageHeight - margin, 1)
+                if image.width() > maxWidth or image.height() > maxHeight:
+                    image = image.scaled(QSize(int(maxWidth), int(maxHeight)),
+                                          Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                url = QUrl(item['path'])
+                doc.addResource(QTextDocument.ImageResource, url, image)
+                cursor.insertImage(url.toString())
+        else:
+            remaining = item['text'][offset:]
+            cursor.insertText(remaining + ' ')
+
+        if doc.size().height() > pageHeight:
+            cursor.setPosition(posBefore)
+            cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
+            cursor.removeSelectedText()
+
+            if item['type'] == 'text' and firstInsert:
+                remaining = item['text'][offset:]
+                fitCount, fittedText = _fitWordBoundary(doc, cursor, pageHeight, remaining)
+                if fitCount == 0:
+                    firstWord = remaining.split(' ', 1)[0]
+                    cursor.insertText(firstWord)
+                    fittedText = firstWord
+                nextOffset = offset + len(fittedText)
+                while nextOffset < len(item['text']) and item['text'][nextOffset] == ' ':
+                    nextOffset += 1
+                placed.append({**item, 'text': fittedText})
+                return item, nextOffset, placed
+
+            return item, 0, placed
+
+        placed.append(item)
+        firstInsert = False
+        item = nextItem()
+
+    return None, 0, placed
+
+@dataclass
+class ReadingPosition:
+    chapter: int
+    itemIndex: int
+    charOffset: int = 0
+
+def renderPageFrom(book, textEdit, position, getImageDataFn):
+    itemsIter = blocksToItemsIter(getChapterBlocksIter(book, position.chapter))
+    for _ in range(position.itemIndex):
+        if next(itemsIter, None) is None:
+            return None
+
+    if position.charOffset > 0:
+        pendingItem = next(itemsIter, None)
+        pendingOffset = position.charOffset
+    else:
+        pendingItem = None
+        pendingOffset = 0
+
+    nextPendingItem, nextPendingOffset, placed = fillPageAndCapture(
+        book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn)
+
+    consumedThisPage = len(placed)
+
+    if nextPendingItem is not None:
+        nextItemIndex = position.itemIndex + consumedThisPage - 1
+        return ReadingPosition(position.chapter, nextItemIndex, nextPendingOffset)
+
+    return None
+
+
+def buildPageIndex(book, textEdit, chapter, getImageDataFn):
+    """Walk a chapter once, forward, recording every page boundary.
+    Call this whenever the chapter, font size, or widget size changes."""
+    positions = [ReadingPosition(chapter, 0, 0)]
+    pos = positions[0]
+    while True:
+        pos = renderPageFrom(book, textEdit, pos, getImageDataFn)
+        if pos is None:
+            break
+        positions.append(pos)
+    return positions
+
+def findPageForPosition(pageIndex, savedPosition):
+    """Given a rebuilt pageIndex (after a font/size change) and a saved
+    ReadingPosition, finds which page NOW contains that sentence."""
+    bestPage = 0
+    for i, pos in enumerate(pageIndex):
+        if pos.chapter != savedPosition.chapter:
+            continue
+        if pos.itemIndex <= savedPosition.itemIndex:
+            bestPage = i
+        else:
+            break
+    return bestPage

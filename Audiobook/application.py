@@ -1,12 +1,12 @@
 from PySide6.QtWidgets import QMainWindow, QApplication, QPushButton, QGridLayout, QSizePolicy, QFileDialog
 from PySide6.QtGui import QIcon
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 from ui_Audiobook import Ui_MainWindow
 from ui_BookWindow import Ui_BookWindow
 from fileHandling import saveNewBook
-from SQLHandler import init_db, add_book, get_books_by_accessed, get_book
+from SQLHandler import init_db, add_book, get_books_by_accessed, get_book, update_book
 from pathlib import Path
-from epubReader import getBook, getCoverImagePath, getLanguages, getCreators, getTitles, save_cover_image
+from epubReader import getBook, getImageData, getLanguages, getCreators, getTitles, save_cover_image, buildPageIndex, ReadingPosition, findPageForPosition, renderPageFrom
 import os
 
 SUPPORTED_FILE_TYPES = {"epub"} #currently supported file types
@@ -158,10 +158,60 @@ class BookWindow(QMainWindow):
         super().__init__(parent)
         self.ui = Ui_BookWindow()
         self.ui.setupUi(self)
+        self.id = book_id
         self.databaseBook = get_book(book_id)
-        section = self.databaseBook.chapter
-        sentence = self.databaseBook.sentence
-        self.ui.TextArea
+        self.book = getBook(self.databaseBook.file_path)
+        self.section = self.databaseBook.chapter
+        self.sentence = self.databaseBook.sentence
+
+        # defer pagination until the widget has real, laid-out dimensions
+        QTimer.singleShot(0, self._loadInitialPage)
+
+        self.ui.nextPageButton.clicked.connect(self.goNext)
+        self.ui.prevPageButton.clicked.connect(self.goPrevious)
+
+    def _loadInitialPage(self):
+        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
+        savedPosition = ReadingPosition(chapter=self.section, itemIndex=self.sentence, charOffset=0)
+        self.currentPage = findPageForPosition(self.pageIndex, savedPosition)
+        renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
+
+    def goNext(self):
+        if self.currentPage + 1 < len(self.pageIndex):
+            self.currentPage += 1
+            renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
+        else:
+            self._goToNextChapter()
+        self._saveProgress()
+
+    def goPrevious(self):
+        if self.currentPage > 0:
+            self.currentPage -= 1
+            renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
+        else:
+            self._goToPreviousChapter()
+        self._saveProgress()
+
+    def _goToNextChapter(self):
+        self.section += 1
+        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
+        if not self.pageIndex:
+            self.section -= 1
+            return
+        self.currentPage = 0
+        renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
+
+    def _goToPreviousChapter(self):
+        if self.section == 0:
+            return
+        self.section -= 1
+        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
+        self.currentPage = len(self.pageIndex) - 1
+        renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
+
+    def _saveProgress(self):
+        position = self.pageIndex[self.currentPage]
+        update_book(self.id, chapter=position.chapter, sentence = position.itemIndex)
 
 if __name__ == "__main__":
     app = QApplication([])
