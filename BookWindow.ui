@@ -94,7 +94,7 @@
     <item>
      <layout class="QVBoxLayout" name="ControlsArea">
       <item>
-       <widget class="QDoubleSpinBox" name="doubleSpinBox">
+       <widget class="QDoubleSpinBox" name="FontEntry">
         <property name="prefix">
          <string>Font Size: </string>
         </property>
@@ -103,6 +103,9 @@
         </property>
         <property name="maximum">
          <double>100.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>16.000000000000000</double>
         </property>
        </widget>
       </item>

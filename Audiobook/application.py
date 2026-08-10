@@ -170,16 +170,24 @@ class BookWindow(QMainWindow):
         self.ui.nextPageButton.clicked.connect(self.goNext)
         self.ui.prevPageButton.clicked.connect(self.goPrevious)
 
+        #connecting single shot for Font Change
+        self.font_size_timer = QTimer()
+        self.font_size_timer.setSingleShot(True)
+        self.font_size_timer.timeout.connect(self.change_font_size)
+        self.ui.FontEntry.valueChanged.connect(self.schedule_font_size_change)
+
     def _loadInitialPage(self):
         self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
         savedPosition = ReadingPosition(chapter=self.section, itemIndex=self.sentence, charOffset=0)
         self.currentPage = findPageForPosition(self.pageIndex, savedPosition)
+        self.currentPosition = self.pageIndex[self.currentPage]
         renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
 
     def goNext(self):
         if self.currentPage + 1 < len(self.pageIndex):
             self.currentPage += 1
-            renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
+            self.currentPosition = self.pageIndex[self.currentPage]
+            renderPageFrom(self.book, self.ui.TextArea, self.currentPosition, getImageData)
         else:
             self._goToNextChapter()
         self._saveProgress()
@@ -187,7 +195,8 @@ class BookWindow(QMainWindow):
     def goPrevious(self):
         if self.currentPage > 0:
             self.currentPage -= 1
-            renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
+            self.currentPosition = self.pageIndex[self.currentPage]
+            renderPageFrom(self.book, self.ui.TextArea, self.currentPosition, getImageData)
         else:
             self._goToPreviousChapter()
         self._saveProgress()
@@ -212,6 +221,23 @@ class BookWindow(QMainWindow):
     def _saveProgress(self):
         position = self.pageIndex[self.currentPage]
         update_book(self.id, chapter=position.chapter, sentence = position.itemIndex)
+
+    def schedule_font_size_change(self):
+        self.font_size_timer.start(500)  # restart the 500ms countdown
+
+    def change_font_size(self):
+        savedPosition = self.currentPosition   # <-- exact position, not pageIndex[currentPage]
+
+        fontSize = self.ui.FontEntry.value()
+        font = self.ui.TextArea.font()
+        font.setPointSizeF(fontSize)
+        self.ui.TextArea.setFont(font)
+
+        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
+        self.currentPage = findPageForPosition(self.pageIndex, savedPosition)
+        renderPageFrom(self.book, self.ui.TextArea, savedPosition, getImageData)
+        self.currentPosition = savedPosition   # <-- record exactly what's now on screen
+
 
 if __name__ == "__main__":
     app = QApplication([])

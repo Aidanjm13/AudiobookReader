@@ -79,12 +79,13 @@ class Ui_BookWindow(object):
 
         self.ControlsArea = QVBoxLayout()
         self.ControlsArea.setObjectName(u"ControlsArea")
-        self.doubleSpinBox = QDoubleSpinBox(self.centralwidget)
-        self.doubleSpinBox.setObjectName(u"doubleSpinBox")
-        self.doubleSpinBox.setMinimum(1.000000000000000)
-        self.doubleSpinBox.setMaximum(100.000000000000000)
+        self.FontEntry = QDoubleSpinBox(self.centralwidget)
+        self.FontEntry.setObjectName(u"FontEntry")
+        self.FontEntry.setMinimum(1.000000000000000)
+        self.FontEntry.setMaximum(100.000000000000000)
+        self.FontEntry.setValue(16.000000000000000)
 
-        self.ControlsArea.addWidget(self.doubleSpinBox)
+        self.ControlsArea.addWidget(self.FontEntry)
 
 
         self.horizontalLayout.addLayout(self.ControlsArea)
@@ -103,6 +104,6 @@ class Ui_BookWindow(object):
         self.TextArea.setPlaceholderText(QCoreApplication.translate("BookWindow", u"hello", None))
         self.prevPageButton.setText(QCoreApplication.translate("BookWindow", u"Previous Page", None))
         self.nextPageButton.setText(QCoreApplication.translate("BookWindow", u"Next Page", None))
-        self.doubleSpinBox.setPrefix(QCoreApplication.translate("BookWindow", u"Font Size: ", None))
+        self.FontEntry.setPrefix(QCoreApplication.translate("BookWindow", u"Font Size: ", None))
     # retranslateUi
 

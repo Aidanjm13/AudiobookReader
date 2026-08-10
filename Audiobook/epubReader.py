@@ -3,6 +3,7 @@ import ebooklib
 from ebooklib import epub
 from lxml import html
 import tinycss2
+from cssselect import GenericTranslator
 import os
 import copy
 import posixpath
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import QTextEdit
 from PySide6.QtGui import QTextCursor, QTextBlockFormat, QTextDocument, QImage
 from PySide6.QtCore import Qt, QUrl, QSize
 from dataclasses import dataclass
+
 
 
 #returns the ebooklib book object with book path
@@ -90,29 +92,48 @@ def getSectionTitles(book):
 # and the text-align property -- not a full CSS cascade, but covers how
 # alignment is set in the vast majority of real EPUBs.
 def getAlignmentMap(book):
+    """Returns a dict keyed by id(element) -> alignment string, resolved
+    via real CSS selector matching (tag, class, descendant selectors --
+    not just simple class-name lookup). Must be called once per chapter
+    tree (the SAME tree object used later for extraction), since the
+    id()-based keys only stay valid as long as those exact element
+    objects remain alive -- see _keepAlive below."""
     import ebooklib
-    alignMap = {}
+    translator = GenericTranslator()
+    rules = []
     for item in book.get_items_of_type(ebooklib.ITEM_STYLE):
         css = item.get_content().decode('utf-8', errors='ignore')
-        rules = tinycss2.parse_stylesheet(css, skip_whitespace=True, skip_comments=True)
-        for rule in rules:
+        for rule in tinycss2.parse_stylesheet(css, skip_whitespace=True, skip_comments=True):
             if rule.type != 'qualified-rule':
                 continue
-            prelude = tinycss2.serialize(rule.prelude)
-            declarations = tinycss2.parse_declaration_list(rule.content)
+            selector = tinycss2.serialize(rule.prelude).strip()
             align = None
-            for decl in declarations:
+            for decl in tinycss2.parse_declaration_list(rule.content):
                 if decl.type == 'declaration' and decl.lower_name == 'text-align':
                     align = tinycss2.serialize(decl.value).strip()
-            if not align:
-                continue
-            for cls in prelude.split(','):
-                cls = cls.strip()
-                if '.' in cls:
-                    className = cls.split('.')[-1].split(':')[0].strip()
-                    if className:
-                        alignMap[className] = align
-    return alignMap
+            if align:
+                rules.append((selector, align))
+    return rules  # compiled selectors resolved per-chapter-tree, see below
+
+def resolveAlignmentForTree(tree, rules):
+    """Applies the parsed (selector, align) rules against ONE specific
+    chapter's tree, returning {id(element): align}. Call this once per
+    chapter, right after parsing that chapter's tree -- and keep the
+    returned _keepAlive list alive alongside the dict for as long as
+    you're using it, or id() collisions can silently corrupt results."""
+    translator = GenericTranslator()
+    elementAlign = {}
+    keepAlive = []
+    for selector, align in rules:
+        try:
+            xpath = translator.css_to_xpath(selector)
+        except Exception:
+            continue  # unsupported selector syntax -- skip rather than crash
+        matched = tree.xpath(xpath)
+        keepAlive.extend(matched)
+        for el in matched:
+            elementAlign[id(el)] = align
+    return elementAlign, keepAlive
 
 _BLOCK_TAGS = {'p', 'div', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}
 _IMAGE_TAGS = {'img', 'image'}
@@ -456,15 +477,26 @@ def renderPageFrom(book, textEdit, position, getImageDataFn):
     return None
 
 def buildPageIndex(book, textEdit, chapter, getImageDataFn):
-    """Walk a chapter once, forward, recording every page boundary.
-    Call this whenever the chapter, font size, or widget size changes."""
     positions = [ReadingPosition(chapter, 0, 0)]
-    pos = positions[0]
+    itemsIter = blocksToItemsIter(getChapterBlocksIter(book, chapter))
+    pendingItem, pendingOffset = None, 0
+    itemsConsumedSoFar = 0
+
     while True:
-        pos = renderPageFrom(book, textEdit, pos, getImageDataFn)
-        if pos is None:
+        nextPendingItem, nextPendingOffset, placed = fillPageAndCapture(
+            book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn)
+
+        if nextPendingItem is not None:
+            if nextPendingOffset > 0:
+                nextItemIndex = itemsConsumedSoFar + len(placed) - 1
+            else:
+                nextItemIndex = itemsConsumedSoFar + len(placed)
+            positions.append(ReadingPosition(chapter, nextItemIndex, nextPendingOffset))
+            itemsConsumedSoFar = nextItemIndex
+            pendingItem, pendingOffset = nextPendingItem, nextPendingOffset
+        else:
             break
-        positions.append(pos)
+
     return positions
 
 def findPageForPosition(pageIndex, savedPosition):
