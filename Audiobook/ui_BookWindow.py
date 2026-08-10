@@ -15,8 +15,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMainWindow, QPushButton,
-    QSizePolicy, QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QDoubleSpinBox, QHBoxLayout, QMainWindow,
+    QPushButton, QSizePolicy, QTextEdit, QVBoxLayout,
+    QWidget)
 
 class Ui_BookWindow(object):
     def setupUi(self, BookWindow):
@@ -31,6 +32,7 @@ class Ui_BookWindow(object):
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.TextArea = QTextEdit(self.centralwidget)
         self.TextArea.setObjectName(u"TextArea")
+        self.TextArea.setReadOnly(True)
 
         self.verticalLayout.addWidget(self.TextArea)
 
@@ -65,13 +67,20 @@ class Ui_BookWindow(object):
 
         self.horizontalLayout.addLayout(self.verticalLayout)
 
-        self.widget = QWidget(self.centralwidget)
-        self.widget.setObjectName(u"widget")
+        self.ControlsArea = QVBoxLayout()
+        self.ControlsArea.setObjectName(u"ControlsArea")
+        self.doubleSpinBox = QDoubleSpinBox(self.centralwidget)
+        self.doubleSpinBox.setObjectName(u"doubleSpinBox")
+        self.doubleSpinBox.setMinimum(1.000000000000000)
+        self.doubleSpinBox.setMaximum(100.000000000000000)
 
-        self.horizontalLayout.addWidget(self.widget)
+        self.ControlsArea.addWidget(self.doubleSpinBox)
+
+
+        self.horizontalLayout.addLayout(self.ControlsArea)
 
         self.horizontalLayout.setStretch(0, 5)
-        self.horizontalLayout.setStretch(1, 2)
+        self.horizontalLayout.setStretch(1, 1)
         BookWindow.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(BookWindow)
@@ -83,5 +92,6 @@ class Ui_BookWindow(object):
         BookWindow.setWindowTitle(QCoreApplication.translate("BookWindow", u"BookWindow", None))
         self.prevPageButton.setText(QCoreApplication.translate("BookWindow", u"Previous Page", None))
         self.nextPageButton.setText(QCoreApplication.translate("BookWindow", u"Next Page", None))
+        self.doubleSpinBox.setPrefix(QCoreApplication.translate("BookWindow", u"Font Size: ", None))
     # retranslateUi
 

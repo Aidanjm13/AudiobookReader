@@ -14,11 +14,15 @@
    <string>BookWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QHBoxLayout" name="horizontalLayout" stretch="5,2">
+   <layout class="QHBoxLayout" name="horizontalLayout" stretch="5,1">
     <item>
      <layout class="QVBoxLayout" name="verticalLayout" stretch="12,1">
       <item>
-       <widget class="QTextEdit" name="TextArea"/>
+       <widget class="QTextEdit" name="TextArea">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
       </item>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_2">
@@ -68,7 +72,21 @@
      </layout>
     </item>
     <item>
-     <widget class="QWidget" name="widget" native="true"/>
+     <layout class="QVBoxLayout" name="ControlsArea">
+      <item>
+       <widget class="QDoubleSpinBox" name="doubleSpinBox">
+        <property name="prefix">
+         <string>Font Size: </string>
+        </property>
+        <property name="minimum">
+         <double>1.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>100.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </item>
    </layout>
   </widget>
