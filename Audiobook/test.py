@@ -18,11 +18,14 @@ from textSplitting import split_sentences
 fileName = "pg84-images-3 - copy"
 bookPath = os.path.join(getBooksFolderPath(), fileName, f"{fileName}.epub")
 book = getBook(bookPath)
-print(getSectionTitles(book))
+#print(getSectionTitles(book))
 #print(getChapterBlocks(book,1))
 #print(getCoverImagePath(book))
 #print(getCoverImage(book,getCoverImagePath(book)))
 
+for i in getChapterBlocks(book, 2):
+    print(i)
+print(getChapterBlocksIter(book, 2))
 
 # documents = getSpineDocuments(book)
 # tocFlat = flattenToc(book.toc)

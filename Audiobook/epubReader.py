@@ -264,6 +264,7 @@ _ALIGN_MAP = {
     None: Qt.AlignLeft,
 }
 
+#splits block of text into sentences using pysbd library
 def split_sentences(text, language="en"):
     text = text.strip()
     if not text:
@@ -271,6 +272,7 @@ def split_sentences(text, language="en"):
     segmenter = _segmenter if language == "en" else pysbd.Segmenter(language=language, clean=False)
     return [s.strip() for s in segmenter.segment(text) if s.strip()]
 
+#goes through a chapters html tree and returns list of dictionaries as {'type': 'text', text, align} or {'type': 'image', path, alt}
 def getChapterBlocksIter(book, chapter, alignMap=None):
     if alignMap is None:
         alignMap = getAlignmentMap(book)
@@ -320,6 +322,7 @@ def getChapterBlocksIter(book, chapter, alignMap=None):
         for text in _blockToParagraphs(el):
             yield {'type': 'text', 'tag': el.tag, 'text': text, 'align': align}
 
+#takes the blocks from chapterBlocks and turns it into sentences each
 def blocksToItemsIter(blocksIter):
     for block in blocksIter:
         if block['type'] == 'image':
@@ -329,6 +332,7 @@ def blocksToItemsIter(blocksIter):
         for i, s in enumerate(split_sentences(block['text'])):
             yield {'type': 'text', 'text': s, 'align': block['align'], 'newParagraph': (i == 0)}
 
+#if a single sentence cant fit on a page this handles the case and splits it mid sentence
 def _fitWordBoundary(doc, cursor, pageHeight, text):
     words = text.split(' ')
     fitCount = 0
@@ -348,6 +352,7 @@ def _fitWordBoundary(doc, cursor, pageHeight, text):
         fitCount = len(words)
     return fitCount, ' '.join(words[:fitCount])
 
+#takes items from the getChapterBlocks generators and attempts to fit them on the page to determine where the page boundaries are
 def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn):
     doc = textEdit.document()
     doc.clear()
@@ -425,6 +430,7 @@ class ReadingPosition:
     itemIndex: int
     charOffset: int = 0
 
+#renders the current page in the text edit
 def renderPageFrom(book, textEdit, position, getImageDataFn):
     itemsIter = blocksToItemsIter(getChapterBlocksIter(book, position.chapter))
     for _ in range(position.itemIndex):
@@ -448,7 +454,6 @@ def renderPageFrom(book, textEdit, position, getImageDataFn):
         return ReadingPosition(position.chapter, nextItemIndex, nextPendingOffset)
 
     return None
-
 
 def buildPageIndex(book, textEdit, chapter, getImageDataFn):
     """Walk a chapter once, forward, recording every page boundary.
