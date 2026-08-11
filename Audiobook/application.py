@@ -226,17 +226,27 @@ class BookWindow(QMainWindow):
         self.font_size_timer.start(500)  # restart the 500ms countdown
 
     def change_font_size(self):
-        savedPosition = self.currentPosition   # <-- exact position, not pageIndex[currentPage]
+        savedPosition = self.currentPosition   # sentence currently at the top of the page
 
         fontSize = self.ui.FontEntry.value()
         font = self.ui.TextArea.font()
         font.setPointSizeF(fontSize)
         self.ui.TextArea.setFont(font)
 
-        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
-        self.currentPage = findPageForPosition(self.pageIndex, savedPosition)
-        renderPageFrom(self.book, self.ui.TextArea, savedPosition, getImageData)
-        self.currentPosition = savedPosition   # <-- record exactly what's now on screen
+        # Anchor repagination at savedPosition so that sentence stays pinned to the
+        # top of a page in the new layout, instead of just searching for whichever
+        # page happens to contain it.
+        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData,
+                                         anchor=savedPosition)
+
+        # buildPageIndex guarantees a page starting exactly at savedPosition when an
+        # anchor is passed, so this is an exact match, not a nearest-fit search.
+        self.currentPage = next(
+            i for i, pos in enumerate(self.pageIndex)
+            if pos.itemIndex == savedPosition.itemIndex and pos.charOffset == savedPosition.charOffset
+        )
+        self.currentPosition = self.pageIndex[self.currentPage]
+        renderPageFrom(self.book, self.ui.TextArea, self.currentPosition, getImageData)
 
 
 if __name__ == "__main__":
