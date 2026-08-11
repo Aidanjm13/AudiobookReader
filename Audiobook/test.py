@@ -23,9 +23,10 @@ book = getBook(bookPath)
 #print(getCoverImagePath(book))
 #print(getCoverImage(book,getCoverImagePath(book)))
 
-for i in getChapterBlocks(book, 2):
-    print(i)
-print(getChapterBlocksIter(book, 2))
+
+for block in getChapterBlocksIter(book, 3):
+    for item in blocksToItemsIter(block):
+        print(item)
 
 # documents = getSpineDocuments(book)
 # tocFlat = flattenToc(book.toc)
