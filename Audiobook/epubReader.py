@@ -47,6 +47,10 @@ def getLanguages(book):
 
 #internal helper: flattens book.toc (which can be nested via Section groups)
 #into a flat list of (title, href) tuples, in reading order
+#ebooklib represents a nested TOC entry as a (Section, [children]) tuple, and a
+#leaf entry as a plain Link/Section object with .title/.href. This walks the
+#tree recursively (depth-first), adding a Section's own title/href before
+#descending into its children, so the result preserves reading order.
 def _flattenToc(tocEntries):
     flat = []
     for entry in tocEntries:
@@ -59,6 +63,10 @@ def _flattenToc(tocEntries):
     return flat
 
 #internal helper: returns chapter document items in spine (reading) order, skipping nav pages
+#the EPUB manifest lists every document item, but book.spine gives the actual
+#playback order as a list of (item_id, linear_flag) pairs. This looks each id
+#up in the manifest, drops the generated navigation document (EpubNav, e.g.
+#the TOC page itself), and returns just the ordered chapter/document items.
 def getSpineDocuments(book):
     idToItem = {item.get_id(): item for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT)}
     ordered = []
@@ -68,6 +76,10 @@ def getSpineDocuments(book):
             ordered.append(item)
     return ordered
 
+#internal helper: reduces an href (which may include a directory path and/or
+#a '#fragment' anchor, and may be URL-encoded) down to just its plain,
+#decoded filename. Used so TOC hrefs and spine-document names can be matched
+#against each other even when they're written slightly differently.
 def _normalizeHref(href):
     return unquote(posixpath.basename(href.split('#')[0]))
 
@@ -162,6 +174,11 @@ def _blockToParagraphs(el):
 def _getImageSrc(el):
     return el.get('src') or el.get('xlink:href') or el.get('href')
 
+#internal helper: image `src`/`href` attributes in a chapter's HTML are
+#relative to that chapter's own location inside the EPUB, not the EPUB root.
+#This joins the relative path onto the chapter's directory and normalizes
+#away any '..' segments, producing the absolute-within-the-EPUB path needed
+#to look the image item up via book.get_item_with_href().
 def _resolveHref(chapterItem, relSrc):
     chapterDir = posixpath.dirname(chapterItem.get_name())
     return posixpath.normpath(posixpath.join(chapterDir, relSrc))
@@ -197,10 +214,15 @@ def getChapterBlocks(book, chapter, alignMap=None):
         if item is None:
             return None
 
+    # parse the chapter's raw (X)HTML into a walkable element tree
     tree = html.fromstring(item.get_content())
     blocks = []
+    # walk every element in document order (tree.iter() is depth-first)
     for el in tree.iter():
         if el.tag in _IMAGE_TAGS:
+            # handle <img>/<image> elements: resolve their src to an absolute
+            # in-EPUB path and record an image block if that path really
+            # exists in the manifest
             src = _getImageSrc(el)
             if not src:
                 continue
@@ -210,10 +232,18 @@ def getChapterBlocks(book, chapter, alignMap=None):
             continue
 
         if el.tag not in _BLOCK_TAGS:
+            # skip inline elements (span, a, em, etc.) -- their text is
+            # picked up later via text_content() on their containing block
             continue
         if any(a.tag in _BLOCK_TAGS for a in el.iterancestors()):
+            # skip block elements nested inside another block element (e.g. a
+            # <p> inside a <div>) so we don't emit the same text twice --
+            # only the outermost block in a nesting chain is processed
             continue
 
+        # determine text alignment: an inline style="text-align:..." wins,
+        # otherwise fall back to whatever the element's CSS class resolves to
+        # via the alignMap built by getAlignmentMap()
         align = None
         style = el.get('style') or ''
         if 'text-align' in style:
@@ -226,6 +256,8 @@ def getChapterBlocks(book, chapter, alignMap=None):
                     align = alignMap[cls]
                     break
 
+        # split this block's text on real paragraph breaks (see
+        # _blockToParagraphs) and emit one text block per resulting paragraph
         for text in _blockToParagraphs(el):
             blocks.append({'type': 'text', 'tag': el.tag, 'text': text, 'align': align})
 
@@ -294,6 +326,10 @@ def split_sentences(text, language="en"):
     return [s.strip() for s in segmenter.segment(text) if s.strip()]
 
 #goes through a chapters html tree and returns list of dictionaries as {'type': 'text', text, align} or {'type': 'image', path, alt}
+#this is a generator ("lazy") twin of getChapterBlocks() above: identical
+#parsing/alignment logic, but it yields each block as it's found instead of
+#building a full list, so pagination (which may stop partway through a
+#chapter) doesn't have to parse blocks it will never use.
 def getChapterBlocksIter(book, chapter, alignMap=None):
     if alignMap is None:
         alignMap = getAlignmentMap(book)
@@ -354,15 +390,24 @@ def blocksToItemsIter(blocksIter):
             yield {'type': 'text', 'text': s, 'align': block['align'], 'newParagraph': (i == 0)}
 
 #if a single sentence cant fit on a page this handles the case and splits it mid sentence
+#Called only when a whole sentence overflowed the page on its own. Adds the
+#sentence's words back into the document one at a time (word-by-word, so
+#the split lands on a word boundary rather than mid-word), stopping as soon
+#as the accumulated text overflows pageHeight again. When that happens, the
+#last (overflowing) word is deleted back out of the document via
+#deletePreviousChar(), leaving only the words that actually fit.
+#Returns (fitCount, fittedText): how many words fit, and the joined text
+#of just those words -- the remainder is left for the next page.
 def _fitWordBoundary(doc, cursor, pageHeight, text):
     words = text.split(' ')
     fitCount = 0
-    acc = ''
+    acc = ''  # text inserted into the document so far
     for n in range(1, len(words) + 1):
         trial = ' '.join(words[:n])
-        cursor.insertText(trial[len(acc):])
+        cursor.insertText(trial[len(acc):])  # only insert the newly-added word(s)
         acc = trial
         if doc.size().height() > pageHeight:
+            # this word pushed us over the page height -- remove just it
             cursor.movePosition(QTextCursor.End)
             for _ in range(len(trial) - len(' '.join(words[:n - 1]))):
                 cursor.deletePreviousChar()
@@ -370,10 +415,41 @@ def _fitWordBoundary(doc, cursor, pageHeight, text):
             break
         fitCount = n
     else:
+        # loop completed without breaking -- every word fit
         fitCount = len(words)
     return fitCount, ' '.join(words[:fitCount])
 
 #takes items from the getChapterBlocks generators and attempts to fit them on the page to determine where the page boundaries are
+#
+#This is the core pagination primitive: it renders sentence/image items one
+#at a time into textEdit's QTextDocument, checking the rendered height after
+#each insertion, until adding the next item would overflow the page
+#(pageHeight, the viewport's current height). It both PRODUCES the visible
+#page (as a side effect of inserting into doc/cursor) and RETURNS bookkeeping
+#about where the page ended, so callers can figure out where the next page
+#should start.
+#
+#Params:
+#  itemsIter    - iterator of remaining sentence/image dicts (from
+#                 blocksToItemsIter) for this chapter
+#  pendingItem  - if not None, a single item that should be inserted first
+#                 (used when resuming a chapter mid-sentence -- see
+#                 pendingOffset below), before pulling anything from itemsIter
+#  pendingOffset- character offset into pendingItem['text'] to start from
+#                 (lets a sentence that was split across two pages resume
+#                 partway through, instead of being duplicated in full)
+#
+#Returns a 3-tuple:
+#  (overflowItem, nextOffset, placed)
+#    overflowItem - the item that didn't fit and starts the NEXT page, or
+#                    None if every remaining item fit on this page (i.e. this
+#                    was the chapter's last page)
+#    nextOffset   - 0 normally; if overflowItem is a sentence that was split
+#                    mid-sentence (see _fitWordBoundary), the character
+#                    offset within it where the next page should resume
+#    placed       - list of the items that were fully placed on this page,
+#                    in order (used by callers to count how far pagination
+#                    advanced)
 def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn):
     doc = textEdit.document()
     doc.clear()
@@ -385,6 +461,8 @@ def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, ge
     firstInsert = True
     placed = []
 
+    # yields pendingItem first (if any) on the very first call, then falls
+    # through to pulling fresh items from itemsIter for everything after
     def nextItem():
         if pendingItem is not None and firstInsert:
             return pendingItem
@@ -392,17 +470,26 @@ def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, ge
 
     item = nextItem()
     while item is not None:
+        # only the very first item (which may be a resumed/split sentence)
+        # uses pendingOffset; every later item starts at its own beginning
         offset = pendingOffset if firstInsert else 0
-        posBefore = cursor.position()
+        posBefore = cursor.position()  # remember where to roll back to if this item overflows
 
         blockFmt = QTextBlockFormat()
         blockFmt.setAlignment(_ALIGN_MAP.get(item.get('align'), Qt.AlignLeft))
         if item['newParagraph'] and not firstInsert:
+            # start a new paragraph/block for items marked as beginning one
+            # (the first sentence of a source paragraph, or an image)
             cursor.insertBlock(blockFmt)
         elif firstInsert:
+            # apply alignment to the page's very first block without
+            # inserting an extra empty block above it
             cursor.setBlockFormat(blockFmt)
 
         if item['type'] == 'image':
+            # fetch and scale the image to fit within the remaining page
+            # area (minus document margins), preserving aspect ratio, then
+            # embed it into the QTextDocument as an inline resource
             data, mime = getImageDataFn(book, item['path'])
             image = QImage.fromData(data)
             if not image.isNull():
@@ -420,11 +507,18 @@ def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, ge
             cursor.insertText(remaining + ' ')
 
         if doc.size().height() > pageHeight:
+            # this item pushed the page over its height limit -- undo it by
+            # deleting everything from just before this item to the end
             cursor.setPosition(posBefore)
             cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
             cursor.removeSelectedText()
 
             if item['type'] == 'text' and firstInsert:
+                # special case: this is the very first item on an otherwise-
+                # empty page and even it alone doesn't fit. Rather than
+                # produce a blank page, force at least part of the sentence
+                # onto it by splitting on a word boundary (or, failing that,
+                # forcing in just the first word so progress is guaranteed).
                 remaining = item['text'][offset:]
                 fitCount, fittedText = _fitWordBoundary(doc, cursor, pageHeight, remaining)
                 if fitCount == 0:
@@ -432,19 +526,31 @@ def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, ge
                     cursor.insertText(firstWord)
                     fittedText = firstWord
                 nextOffset = offset + len(fittedText)
+                # skip past any space(s) so the next page doesn't start with
+                # leading whitespace
                 while nextOffset < len(item['text']) and item['text'][nextOffset] == ' ':
                     nextOffset += 1
                 placed.append({**item, 'text': fittedText})
                 return item, nextOffset, placed
 
+            # normal case: this item didn't fit at all -- it becomes the
+            # first item of the next page, starting from its own beginning
             return item, 0, placed
 
+        # item fit fully -- keep it and move on to the next one
         placed.append(item)
         firstInsert = False
         item = nextItem()
 
+    # ran out of items entirely -- everything fit, this is the chapter's last page
     return None, 0, placed
 
+#a single, addressable location within the book: which chapter (spine
+#index), which sentence/image item within that chapter's flattened item
+#list (see blocksToItemsIter), and optionally a character offset into that
+#item's text (used when a sentence is split across two pages). This is the
+#unit used throughout the module to mark "the top of the current page",
+#"where the user last left off", pagination boundaries, etc.
 @dataclass
 class ReadingPosition:
     chapter: int
@@ -452,13 +558,24 @@ class ReadingPosition:
     charOffset: int = 0
 
 #renders the current page in the text edit
+#Given a ReadingPosition marking the top of a page, re-derives that page's
+#content and draws it into textEdit by walking the chapter's items from the
+#start, skipping past everything before position.itemIndex, then filling the
+#page from there with fillPageAndCapture(). Also computes and returns the
+#ReadingPosition of the page that would come AFTER this one (or None if this
+#is the chapter's last page) -- this is used by buildPageIndex to advance
+#page-by-page through a chapter without keeping the whole item list in memory.
 def renderPageFrom(book, textEdit, position, getImageDataFn):
     itemsIter = blocksToItemsIter(getChapterBlocksIter(book, position.chapter))
+    # advance past all items before this page's starting item
     for _ in range(position.itemIndex):
         if next(itemsIter, None) is None:
             return None
 
     if position.charOffset > 0:
+        # the page starts mid-sentence -- pull that sentence out as the
+        # "pending" item so fillPageAndCapture resumes it at charOffset
+        # instead of re-rendering it from the beginning
         pendingItem = next(itemsIter, None)
         pendingOffset = position.charOffset
     else:
@@ -471,9 +588,11 @@ def renderPageFrom(book, textEdit, position, getImageDataFn):
     consumedThisPage = len(placed)
 
     if nextPendingItem is not None:
+        # more content remains -- report where the following page would begin
         nextItemIndex = position.itemIndex + consumedThisPage - 1
         return ReadingPosition(position.chapter, nextItemIndex, nextPendingOffset)
 
+    # nothing left in this chapter after this page
     return None
 
 #internal: paginates an already-extracted list of `items` forward starting at
@@ -563,6 +682,10 @@ def findPageForPosition(pageIndex, savedPosition):
     """Given a rebuilt pageIndex (after a font/size change) and a saved
     ReadingPosition, finds which page NOW contains that sentence."""
     bestPage = 0
+    # pageIndex entries are in order, each marking where a page STARTS.
+    # keep advancing bestPage as long as a page's start is still at or
+    # before the saved sentence; the first page whose start goes past it
+    # means the previous bestPage is the one that contains it.
     for i, pos in enumerate(pageIndex):
         if pos.chapter != savedPosition.chapter:
             continue
