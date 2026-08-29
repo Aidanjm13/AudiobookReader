@@ -52,6 +52,7 @@ class MainWindow(QMainWindow):
             self.current_file = file_path
             self.load_books()
 
+    #sets the scroll area up with proper margins and grid layout
     def setup_books_area(self):
         self.ui.booksScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.ui.booksScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)

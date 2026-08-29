@@ -335,11 +335,11 @@ def getChapterBlocksIter(book, chapter, alignMap=None):
         alignMap = getAlignmentMap(book)
 
     documents = getSpineDocuments(book)
-    if isinstance(chapter, int):
+    if isinstance(chapter, int): #gets chapter by number
         if chapter < 0 or chapter >= len(documents):
             return
         item = documents[chapter]
-    else:
+    else: #gets chapter by title
         tocFlat = _flattenToc(book.toc) if book.toc else []
         href = next((h for title, h in tocFlat if title == chapter), None)
         if href is None:
@@ -359,6 +359,7 @@ def getChapterBlocksIter(book, chapter, alignMap=None):
                 yield {'type': 'image', 'path': path, 'alt': el.get('alt', '')}
             continue
 
+        #prevents duplicate text due to nested elements
         if el.tag not in _BLOCK_TAGS:
             continue
         if any(a.tag in _BLOCK_TAGS for a in el.iterancestors()):
@@ -477,9 +478,14 @@ def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, ge
 
         blockFmt = QTextBlockFormat()
         blockFmt.setAlignment(_ALIGN_MAP.get(item.get('align'), Qt.AlignLeft))
+
+        #POTENTIAL FIX MAKE IT SCALE BASED ON FONT SIZE
+        PARAGRAPH_SPACING = 12  # pixels — tune to taste
+
         if item['newParagraph'] and not firstInsert:
             # start a new paragraph/block for items marked as beginning one
             # (the first sentence of a source paragraph, or an image)
+            blockFmt.setTopMargin(PARAGRAPH_SPACING)
             cursor.insertBlock(blockFmt)
         elif firstInsert:
             # apply alignment to the page's very first block without
