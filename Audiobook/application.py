@@ -182,7 +182,7 @@ class BookWindow(QMainWindow):
         savedPosition = ReadingPosition(chapter=self.section, itemIndex=self.sentence, charOffset=0)
         self.currentPage = findPageForPosition(self.pageIndex, savedPosition)
         self.currentPosition = self.pageIndex[self.currentPage]
-        renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
+        renderPageFrom(self.book, self.ui.TextArea, self.currentPosition, getImageData)
 
     def goNext(self):
         if self.currentPage + 1 < len(self.pageIndex):
