@@ -1,8 +1,9 @@
 import threading
 import time
+from textToSpeech import SynthesizeText
 
 class TTSWindowCache:
-    def __init__(self, synthesize_fn, page_source, behind=2, ahead=4):
+    def __init__(self, synthesize_fn = SynthesizeText, page_source = None, behind=2, ahead=4):
         self.synthesize = synthesize_fn
         self.page_source = page_source  # function(index) -> text or None
         self.behind = behind

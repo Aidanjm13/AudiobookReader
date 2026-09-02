@@ -130,18 +130,7 @@ def stream_speech_piper(text: str, model_path: str):
         yield np.frombuffer(raw_bytes, dtype=np.int16)
 
 
-if __name__ == "__main__":
-    sample_text = "Hello! This is a test of local text to speech synthesis."
 
-    # Kokoro example — swap lang_code/voice using the dicts above
-    kokoro_path = text_to_speech_kokoro(
-        sample_text, voice="bf_emma", lang_code="b"  # British English, female
-    )
-    print(f"Kokoro audio saved to: {kokoro_path}")
-
-    # Piper example (adjust model_path to wherever you downloaded the .onnx file)
-    piper_path = text_to_speech_piper(
-        sample_text,
-        model_path="en_GB-alan-medium.onnx",  # British English, male
-    )
-    print(f"Piper audio saved to: {piper_path}")
+#main function to take in text and utilize current settings to determine which model to use
+def SynthesizeText(text):
+    print(text)

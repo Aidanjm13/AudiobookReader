@@ -8,8 +8,10 @@ from SQLHandler import init_db, add_book, get_books_by_accessed, get_book, updat
 from pathlib import Path
 from epubReader import getBook, getImageData, getLanguages, getCreators, getTitles, save_cover_image, buildPageIndex, ReadingPosition, findPageForPosition, renderPageFrom
 import os
+from ttsWorker import TTSWindowCache
 
 SUPPORTED_FILE_TYPES = {"epub"} #currently supported file types
+TTSWorker = TTSWindowCache()
 
 class MainWindow(QMainWindow):
     def __init__(self):
