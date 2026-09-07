@@ -132,5 +132,6 @@ def stream_speech_piper(text: str, model_path: str):
 
 
 #main function to take in text and utilize current settings to determine which model to use
+#FIX ME MAKE IT WORK WITH MORE THAN JUST ONE VOICE
 def SynthesizeText(text):
-    print(text)
+    yield stream_speech_piper(text, "en_US-lessac-medium.onnx")

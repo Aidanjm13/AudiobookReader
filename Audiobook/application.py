@@ -8,10 +8,9 @@ from SQLHandler import init_db, add_book, get_books_by_accessed, get_book, updat
 from pathlib import Path
 from epubReader import getBook, getImageData, getLanguages, getCreators, getTitles, save_cover_image, buildPageIndex, ReadingPosition, findPageForPosition, renderPageFrom
 import os
-from ttsWorker import TTSWindowCache
+from ttsWorker import get_tts_worker, open_book
 
 SUPPORTED_FILE_TYPES = {"epub"} #currently supported file types
-TTSWorker = TTSWindowCache()
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -164,8 +163,10 @@ class BookWindow(QMainWindow):
         self.id = book_id
         self.databaseBook = get_book(book_id)
         self.book = getBook(self.databaseBook.file_path)
+        self.fileType = self.databaseBook.file_type
         self.section = self.databaseBook.chapter
         self.sentence = self.databaseBook.sentence
+        self.ttsWorker = get_tts_worker()
 
         # defer pagination until the widget has real, laid-out dimensions
         QTimer.singleShot(0, self._loadInitialPage)
@@ -176,7 +177,7 @@ class BookWindow(QMainWindow):
         #connecting single shot for Font Change
         self.font_size_timer = QTimer()
         self.font_size_timer.setSingleShot(True)
-        self.font_size_timer.timeout.connect(self.change_font_size)
+        self.font_size_timer.timeout.connect(self.cange_font_size)
         self.ui.FontEntry.valueChanged.connect(self.schedule_font_size_change)
 
     def _loadInitialPage(self):
@@ -185,6 +186,7 @@ class BookWindow(QMainWindow):
         self.currentPage = findPageForPosition(self.pageIndex, savedPosition)
         self.currentPosition = self.pageIndex[self.currentPage]
         renderPageFrom(self.book, self.ui.TextArea, self.currentPosition, getImageData)
+        open_book(self.book_id, self.file_type, self.currentPosition)
 
     def goNext(self):
         if self.currentPage + 1 < len(self.pageIndex):
