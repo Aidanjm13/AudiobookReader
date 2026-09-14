@@ -6,10 +6,10 @@ from ui_BookWindow import Ui_BookWindow
 from fileHandling import saveNewBook
 from SQLHandler import init_db, add_book, get_books_by_accessed, get_book, update_book
 from pathlib import Path
-from epubReader import getBook, getImageData, getLanguages, getCreators, getTitles, save_cover_image, buildPageIndex, ReadingPosition, findPageForPosition, renderPageFrom
+from epubReader import getBook, getImageData, getLanguages, getCreators, getTitles, save_cover_image, renderItemsIntoTextEdit
 import os
-from bookPages import build_pages
-from ttsWorker import get_tts_worker, open_book
+from bookPages import buildPages, getCurrentPageItems, goNextPage, goPrevPage
+from ttsWorker import get_tts_worker
 
 SUPPORTED_FILE_TYPES = {"epub"} #currently supported file types
 
@@ -182,51 +182,29 @@ class BookWindow(QMainWindow):
         self.ui.FontEntry.valueChanged.connect(self.schedule_font_size_change)
 
     #FIX ME: do we want to reload page index if this happens, wait a few seconds then do it
+    #should have some system that if the text area is too small or minimized it is treated as a certain size so that tts can still work well
     def resizeEvent(self, event):
             super().resizeEvent(event)
 
+    #is called when the book first opens, builds the index and renders the currentpage
     def _loadInitialPage(self):
-        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
-        savedPosition = ReadingPosition(chapter=self.section, itemIndex=self.sentence, charOffset=0)
-        self.currentPage = findPageForPosition(self.pageIndex, savedPosition)
-        self.currentPosition = self.pageIndex[self.currentPage]
-        renderPageFrom(self.book, self.ui.TextArea, self.currentPosition, getImageData)
-        open_book(self.book_id, self.file_type, self.currentPosition)
+        buildPages(self.id,self.ui.TextArea)
+        self.renderCurrentPage()
+
+    #renders the 
+    def renderCurrentPage(self):
+        match self.fileType:
+            case "epub":
+                items = getCurrentPageItems(self.id)
+                renderItemsIntoTextEdit(self.book,self.ui.TextArea,items)
 
     def goNext(self):
-        if self.currentPage + 1 < len(self.pageIndex):
-            self.currentPage += 1
-            self.currentPosition = self.pageIndex[self.currentPage]
-            renderPageFrom(self.book, self.ui.TextArea, self.currentPosition, getImageData)
-        else:
-            self._goToNextChapter()
-        self._saveProgress()
+        goNextPage(self.id, self.ui.TextArea)
+        self.renderCurrentPage()
 
     def goPrevious(self):
-        if self.currentPage > 0:
-            self.currentPage -= 1
-            self.currentPosition = self.pageIndex[self.currentPage]
-            renderPageFrom(self.book, self.ui.TextArea, self.currentPosition, getImageData)
-        else:
-            self._goToPreviousChapter()
-        self._saveProgress()
-
-    def _goToNextChapter(self):
-        self.section += 1
-        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
-        if not self.pageIndex:
-            self.section -= 1
-            return
-        self.currentPage = 0
-        renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
-
-    def _goToPreviousChapter(self):
-        if self.section == 0:
-            return
-        self.section -= 1
-        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
-        self.currentPage = len(self.pageIndex) - 1
-        renderPageFrom(self.book, self.ui.TextArea, self.pageIndex[self.currentPage], getImageData)
+        goPrevPage(self.id, self.ui.TextArea)
+        self.renderCurrentPage()
 
     def _saveProgress(self):
         position = self.pageIndex[self.currentPage]
@@ -236,27 +214,15 @@ class BookWindow(QMainWindow):
         self.font_size_timer.start(500)  # restart the 500ms countdown
 
     def change_font_size(self):
-        savedPosition = self.currentPosition   # sentence currently at the top of the page
-
+        #change font size
         fontSize = self.ui.FontEntry.value()
         font = self.ui.TextArea.font()
         font.setPointSizeF(fontSize)
         self.ui.TextArea.setFont(font)
 
-        # Anchor repagination at savedPosition so that sentence stays pinned to the
-        # top of a page in the new layout, instead of just searching for whichever
-        # page happens to contain it.
-        self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData,
-                                         anchor=savedPosition)
-
-        # buildPageIndex guarantees a page starting exactly at savedPosition when an
-        # anchor is passed, so this is an exact match, not a nearest-fit search.
-        self.currentPage = next(
-            i for i, pos in enumerate(self.pageIndex)
-            if pos.itemIndex == savedPosition.itemIndex and pos.charOffset == savedPosition.charOffset
-        )
-        self.currentPosition = self.pageIndex[self.currentPage]
-        renderPageFrom(self.book, self.ui.TextArea, self.currentPosition, getImageData)
+        #rebuild page index with anchor
+        buildPages(self.id,self.ui.TextArea,True)
+        self.renderCurrentPage()
 
 
 if __name__ == "__main__":

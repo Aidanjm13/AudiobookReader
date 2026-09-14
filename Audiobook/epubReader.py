@@ -563,6 +563,109 @@ class ReadingPosition:
     itemIndex: int
     charOffset: int = 0
 
+#internal: paginates an already-extracted list of `items` forward starting at
+#(startItemIndex, startCharOffset), returning page-start positions. The first
+#entry is always (chapter, startItemIndex, startCharOffset). This is the core
+#forward-fill loop shared by buildPageIndex, whether starting at the top of
+#the chapter or at some arbitrary anchor sentence.
+def _paginateFrom(book, textEdit, chapter, getImageDataFn, items, startItemIndex, startCharOffset):
+    positions = [ReadingPosition(chapter, startItemIndex, startCharOffset)]
+
+    if startCharOffset > 0:
+        pendingItem = items[startItemIndex]
+        pendingOffset = startCharOffset
+        itemsIter = iter(items[startItemIndex + 1:])
+    else:
+        pendingItem = None
+        pendingOffset = 0
+        itemsIter = iter(items[startItemIndex:])
+
+    itemsConsumedSoFar = startItemIndex
+    pageItems = []
+
+    while True:
+        nextPendingItem, nextPendingOffset, placed = fillPageAndCapture(
+            book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn)
+        pageItems.append(placed)
+        if nextPendingItem is not None:
+            if nextPendingOffset > 0:
+                nextItemIndex = itemsConsumedSoFar + len(placed) - 1
+            else:
+                nextItemIndex = itemsConsumedSoFar + len(placed)
+            positions.append(ReadingPosition(chapter, nextItemIndex, nextPendingOffset))
+            itemsConsumedSoFar = nextItemIndex
+            pendingItem, pendingOffset = nextPendingItem, nextPendingOffset
+        else:
+            break
+
+    return pageItems
+
+#internal: paginates items[:stopItemIndex] (plus a truncated copy of
+#items[stopItemIndex] cut off at stopCharOffset, if the anchor lands
+#mid-sentence) forward from the start of the chapter. Used to fill in the
+#pages that come BEFORE a pinned anchor point without letting any of them
+#run past it. The last page produced here may end up shorter than a full
+#page -- it can't borrow content from the anchor's page, since the anchor
+#must stay fixed at the top of its page.
+def _paginateUpTo(book, textEdit, chapter, getImageDataFn, items, stopItemIndex, stopCharOffset):
+    boundedItems = items[:stopItemIndex]
+    if stopCharOffset > 0 and stopItemIndex < len(items) and items[stopItemIndex]['type'] == 'text':
+        partial = dict(items[stopItemIndex])
+        partial['text'] = partial['text'][:stopCharOffset]
+        if partial['text'].strip():
+            boundedItems = boundedItems + [partial]
+
+    if not boundedItems:
+        return []
+
+    return _paginateFrom(book, textEdit, chapter, getImageDataFn, boundedItems, 0, 0)
+
+#builds the full forward page index for a chapter.
+#
+#If `anchor` is given (a ReadingPosition within this chapter), pagination is
+#pinned so that a page boundary lands exactly at the anchor -- this is what
+#you want after a font-size change, so the sentence currently at the top of
+#the page stays at the top of the page instead of drifting. Pages after the
+#anchor are paginated forward starting at the anchor; pages before it are
+#paginated forward from the start of the chapter but truncated so they never
+#cross the anchor (see _paginateUpTo).
+#
+#Without an anchor, this just paginates the whole chapter from the start,
+#same as before.
+def buildPageIndex(book, textEdit, chapter, anchor=None):
+    getImageDataFn=getImageData
+    items = list(blocksToItemsIter(getChapterBlocksIter(book, chapter)))
+
+    if not items:
+        return [ReadingPosition(chapter, 0, 0)]
+
+    if anchor is None or (anchor.itemIndex == 0 and anchor.charOffset == 0):
+        return _paginateFrom(book, textEdit, chapter, getImageDataFn, items, 0, 0)
+
+    beforePages = _paginateUpTo(book, textEdit, chapter, getImageDataFn, items,
+                                 anchor.itemIndex, anchor.charOffset)
+    afterPages = _paginateFrom(book, textEdit, chapter, getImageDataFn, items,
+                                anchor.itemIndex, anchor.charOffset)
+    return beforePages.extend(afterPages)
+
+def findPageForPosition(pageIndex, savedPosition):
+    """Given a rebuilt pageIndex (after a font/size change) and a saved
+    ReadingPosition, finds which page NOW contains that sentence."""
+    bestPage = 0
+    # pageIndex entries are in order, each marking where a page STARTS.
+    # keep advancing bestPage as long as a page's start is still at or
+    # before the saved sentence; the first page whose start goes past it
+    # means the previous bestPage is the one that contains it.
+    for i, pos in enumerate(pageIndex):
+        if pos.chapter != savedPosition.chapter:
+            continue
+        if pos.itemIndex <= savedPosition.itemIndex:
+            bestPage = i
+        else:
+            break
+    return bestPage
+
+
 #renders the current page in the text edit
 #Given a ReadingPosition marking the top of a page, re-derives that page's
 #content and draws it into textEdit by walking the chapter's items from the
@@ -601,102 +704,64 @@ def renderPageFrom(book, textEdit, position, getImageDataFn):
     # nothing left in this chapter after this page
     return None
 
-#internal: paginates an already-extracted list of `items` forward starting at
-#(startItemIndex, startCharOffset), returning page-start positions. The first
-#entry is always (chapter, startItemIndex, startCharOffset). This is the core
-#forward-fill loop shared by buildPageIndex, whether starting at the top of
-#the chapter or at some arbitrary anchor sentence.
-def _paginateFrom(book, textEdit, chapter, getImageDataFn, items, startItemIndex, startCharOffset):
-    positions = [ReadingPosition(chapter, startItemIndex, startCharOffset)]
-
-    if startCharOffset > 0:
-        pendingItem = items[startItemIndex]
-        pendingOffset = startCharOffset
-        itemsIter = iter(items[startItemIndex + 1:])
-    else:
-        pendingItem = None
-        pendingOffset = 0
-        itemsIter = iter(items[startItemIndex:])
-
-    itemsConsumedSoFar = startItemIndex
-
-    while True:
-        nextPendingItem, nextPendingOffset, placed = fillPageAndCapture(
-            book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn)
-
-        if nextPendingItem is not None:
-            if nextPendingOffset > 0:
-                nextItemIndex = itemsConsumedSoFar + len(placed) - 1
-            else:
-                nextItemIndex = itemsConsumedSoFar + len(placed)
-            positions.append(ReadingPosition(chapter, nextItemIndex, nextPendingOffset))
-            itemsConsumedSoFar = nextItemIndex
-            pendingItem, pendingOffset = nextPendingItem, nextPendingOffset
-        else:
-            break
-
-    return positions
-
-#internal: paginates items[:stopItemIndex] (plus a truncated copy of
-#items[stopItemIndex] cut off at stopCharOffset, if the anchor lands
-#mid-sentence) forward from the start of the chapter. Used to fill in the
-#pages that come BEFORE a pinned anchor point without letting any of them
-#run past it. The last page produced here may end up shorter than a full
-#page -- it can't borrow content from the anchor's page, since the anchor
-#must stay fixed at the top of its page.
-def _paginateUpTo(book, textEdit, chapter, getImageDataFn, items, stopItemIndex, stopCharOffset):
-    boundedItems = items[:stopItemIndex]
-    if stopCharOffset > 0 and stopItemIndex < len(items) and items[stopItemIndex]['type'] == 'text':
-        partial = dict(items[stopItemIndex])
-        partial['text'] = partial['text'][:stopCharOffset]
-        if partial['text'].strip():
-            boundedItems = boundedItems + [partial]
-
-    if not boundedItems:
-        return []
-
-    return _paginateFrom(book, textEdit, chapter, getImageDataFn, boundedItems, 0, 0)
-
-#builds the full forward page index for a chapter.
+#renders a fixed list of items into textEdit, one after another, with the
+#same paragraph/alignment/image handling as fillPageAndCapture -- but with
+#no pagination bookkeeping: it doesn't check page height, doesn't split
+#items that overflow, and doesn't report where a "next page" would start.
+#Use this when you already know exactly which items belong in the text area
+#(e.g. re-rendering a page whose contents were already determined) and just
+#need them drawn in, rather than being figured out on the fly.
 #
-#If `anchor` is given (a ReadingPosition within this chapter), pagination is
-#pinned so that a page boundary lands exactly at the anchor -- this is what
-#you want after a font-size change, so the sentence currently at the top of
-#the page stays at the top of the page instead of drifting. Pages after the
-#anchor are paginated forward starting at the anchor; pages before it are
-#paginated forward from the start of the chapter but truncated so they never
-#cross the anchor (see _paginateUpTo).
+#Params:
+#  items - a list (not iterator) of every sentence/image dict that should be
+#          placed into textEdit, in order
 #
-#Without an anchor, this just paginates the whole chapter from the start,
-#same as before.
-def buildPageIndex(book, textEdit, chapter, getImageDataFn, anchor=None):
-    items = list(blocksToItemsIter(getChapterBlocksIter(book, chapter)))
+#Returns nothing; all work happens as a side effect of inserting into
+#doc/cursor, same as fillPageAndCapture.
+def renderItemsIntoTextEdit(book, textEdit, items, getImageDataFn=getImageData):
+    doc = textEdit.document()
+    doc.clear()
+    doc.setTextWidth(textEdit.viewport().width())
+    pageHeight = textEdit.viewport().height()
+    cursor = QTextCursor(doc)
+    cursor.movePosition(QTextCursor.Start)
 
-    if not items:
-        return [ReadingPosition(chapter, 0, 0)]
+    firstInsert = True
 
-    if anchor is None or (anchor.itemIndex == 0 and anchor.charOffset == 0):
-        return _paginateFrom(book, textEdit, chapter, getImageDataFn, items, 0, 0)
+    for item in items:
+        blockFmt = QTextBlockFormat()
+        blockFmt.setAlignment(_ALIGN_MAP.get(item.get('align'), Qt.AlignLeft))
 
-    beforePages = _paginateUpTo(book, textEdit, chapter, getImageDataFn, items,
-                                 anchor.itemIndex, anchor.charOffset)
-    afterPages = _paginateFrom(book, textEdit, chapter, getImageDataFn, items,
-                                anchor.itemIndex, anchor.charOffset)
-    return beforePages + afterPages
+        #POTENTIAL FIX MAKE IT SCALE BASED ON FONT SIZE
+        PARAGRAPH_SPACING = 12  # pixels — tune to taste
 
-def findPageForPosition(pageIndex, savedPosition):
-    """Given a rebuilt pageIndex (after a font/size change) and a saved
-    ReadingPosition, finds which page NOW contains that sentence."""
-    bestPage = 0
-    # pageIndex entries are in order, each marking where a page STARTS.
-    # keep advancing bestPage as long as a page's start is still at or
-    # before the saved sentence; the first page whose start goes past it
-    # means the previous bestPage is the one that contains it.
-    for i, pos in enumerate(pageIndex):
-        if pos.chapter != savedPosition.chapter:
-            continue
-        if pos.itemIndex <= savedPosition.itemIndex:
-            bestPage = i
+        if item['newParagraph'] and not firstInsert:
+            # start a new paragraph/block for items marked as beginning one
+            # (the first sentence of a source paragraph, or an image)
+            blockFmt.setTopMargin(PARAGRAPH_SPACING)
+            cursor.insertBlock(blockFmt)
+        elif firstInsert:
+            # apply alignment to the very first block without inserting an
+            # extra empty block above it
+            cursor.setBlockFormat(blockFmt)
+
+        if item['type'] == 'image':
+            # fetch and scale the image to fit within the text area (minus
+            # document margins), preserving aspect ratio, then embed it into
+            # the QTextDocument as an inline resource
+            data, mime = getImageDataFn(book, item['path'])
+            image = QImage.fromData(data)
+            if not image.isNull():
+                margin = doc.documentMargin() * 2
+                maxWidth = max(textEdit.viewport().width() - margin, 1)
+                maxHeight = max(pageHeight - margin, 1)
+                if image.width() > maxWidth or image.height() > maxHeight:
+                    image = image.scaled(QSize(int(maxWidth), int(maxHeight)),
+                                          Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                url = QUrl(item['path'])
+                doc.addResource(QTextDocument.ImageResource, url, image)
+                cursor.insertImage(url.toString())
         else:
-            break
-    return bestPage
+            cursor.insertText(item['text'] + ' ')
+
+        firstInsert = False

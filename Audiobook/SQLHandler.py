@@ -81,12 +81,13 @@ def update_book(book_id, **fields):
 
         session.commit()
 
-def update_book_position(book_id, position):
+def update_book_position(book_id, chapter, position):
     with Session() as session:
         book = session.get(Book, book_id)
         if book is None:
             raise ValueError(f"No book with id {book_id}")
-        book.position = position
+        book.chapter = chapter
+        book.sentence = position
         book.last_accessed = datetime.now()
         session.commit()
 
