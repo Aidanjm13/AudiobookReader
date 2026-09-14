@@ -92,8 +92,8 @@ def buildPages(book_id, textEdit, anchorTop = False):
     position = bookPages.get_position(book_id)
     if(anchorTop): #then setPosition as top of the page
         page = bookPages.get_page(book_id)
-        if(page):
-            setPositionTopPage(bookPages, book_id, page, position[0])
+        if(page is not None):
+            position[1] = setPositionTopPage(bookPages, book_id, page, position[0])
         
     match bookPages.get_fileType(book_id):
         case "epub":
@@ -120,6 +120,7 @@ def setPositionTopPage(bookPages, book_id, currentPageNum, chapter):
     for i in range(currentPageNum):
         itemCount += len(pages[i])
     bookPages.set_position(book_id, chapter, itemCount)
+    return itemCount
 
 #gets the items for the page that the book is currently on
 #offset is if you want pages before or after the current page

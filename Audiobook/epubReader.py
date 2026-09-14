@@ -544,7 +544,14 @@ def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, ge
             return item, 0, placed
 
         # item fit fully -- keep it and move on to the next one
-        placed.append(item)
+        if offset > 0:
+            # this was a continuation of a sentence split across the page
+            # boundary -- record only the portion actually rendered here,
+            # not the original full item, or the next re-render of this
+            # page would duplicate the part already shown on the prior page
+            placed.append({**item, 'text': item['text'][offset:]})
+        else:
+            placed.append(item)
         firstInsert = False
         item = nextItem()
 
