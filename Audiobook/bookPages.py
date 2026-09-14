@@ -3,16 +3,28 @@ import threading
 #this class is for storing the pagination of text for the currently opened books
 #also has helper functions for getting and storing pages
 class BookPages:
-    """Thread-safe holder for the currently-loaded chapter's page text per book.
-    The GUI thread writes here on pagination; the worker thread only reads."""
     def __init__(self):
         self._lock = threading.Lock()
-        self._pages = {}  # book_id -> list[str], pages of the currently loaded chapter
+        self._pages = {}  # book_id : list[list[item]] - items for each page in chapter
+        self._positions = {} # book_id : [chapter,position] - chapter and position for a book
+        self._fileType = {} # book_id : string - filetype of the book
 
     def set_pages(self, book_id, pages):
         """Call after (re)paginating a chapter, from the GUI thread."""
         with self._lock:
             self._pages[book_id] = pages
+
+    def set_position(self, book_id, chapter, position):
+        with self._lock:
+            self._positions[book_id] = [chapter,position]
+
+    def set_fileType(self, book_id, fileType):
+            with self._lock:
+                self._fileType[book_id] = fileType
+
+    def get_fileType(self, book_id):
+        with self._lock:
+            return self._fileType[book_id]
 
     def get_page(self, book_id, index):
         with self._lock:
@@ -24,6 +36,7 @@ class BookPages:
     def close_book(self, book_id):
         with self._lock:
             self._pages.pop(book_id, None)
+            self._positions.pop(book_id, None)
 
 
 _book_pages = None
@@ -37,3 +50,8 @@ def get_book_pages():
             if _book_pages is None:  # double-checked locking
                 _book_pages = BookPages()
     return _book_pages
+
+#takes the textArea from the book page and builds the index for the current chapter
+#populates data from database if not already stored
+def buildPages(book_id, textArea):
+    pass

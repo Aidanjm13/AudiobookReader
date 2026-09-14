@@ -8,6 +8,7 @@ from SQLHandler import init_db, add_book, get_books_by_accessed, get_book, updat
 from pathlib import Path
 from epubReader import getBook, getImageData, getLanguages, getCreators, getTitles, save_cover_image, buildPageIndex, ReadingPosition, findPageForPosition, renderPageFrom
 import os
+from bookPages import build_pages
 from ttsWorker import get_tts_worker, open_book
 
 SUPPORTED_FILE_TYPES = {"epub"} #currently supported file types
@@ -177,8 +178,12 @@ class BookWindow(QMainWindow):
         #connecting single shot for Font Change
         self.font_size_timer = QTimer()
         self.font_size_timer.setSingleShot(True)
-        self.font_size_timer.timeout.connect(self.cange_font_size)
+        self.font_size_timer.timeout.connect(self.change_font_size)
         self.ui.FontEntry.valueChanged.connect(self.schedule_font_size_change)
+
+    #FIX ME: do we want to reload page index if this happens, wait a few seconds then do it
+    def resizeEvent(self, event):
+            super().resizeEvent(event)
 
     def _loadInitialPage(self):
         self.pageIndex = buildPageIndex(self.book, self.ui.TextArea, self.section, getImageData)
