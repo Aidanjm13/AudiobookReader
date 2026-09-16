@@ -9,7 +9,6 @@ import copy
 import posixpath
 from urllib.parse import unquote
 import pysbd
-from PySide6.QtWidgets import QTextEdit
 from PySide6.QtGui import QTextCursor, QTextBlockFormat, QTextDocument, QImage
 from PySide6.QtCore import Qt, QUrl, QSize
 from dataclasses import dataclass
@@ -192,77 +191,6 @@ def getImageData(book, path):
         return None
     return item.get_content(), item.media_type
 
-# Same lookup semantics as getChapterContent (int index or TOC title).
-# Returns ordered blocks: text ({'type':'text','tag':,'text':,'align':})
-# and images ({'type':'image','data':bytes,'mime':str,'alt':str}),
-# interleaved exactly as they appear in the source markup.
-def getChapterBlocks(book, chapter, alignMap=None):
-    if alignMap is None:
-        alignMap = getAlignmentMap(book)
-
-    documents = getSpineDocuments(book)
-    if isinstance(chapter, int):
-        if chapter < 0 or chapter >= len(documents):
-            return None
-        item = documents[chapter]
-    else:
-        tocFlat = _flattenToc(book.toc) if book.toc else []
-        href = next((h for title, h in tocFlat if title == chapter), None)
-        if href is None:
-            return None
-        item = book.get_item_with_href(href.split('#')[0])
-        if item is None:
-            return None
-
-    # parse the chapter's raw (X)HTML into a walkable element tree
-    tree = html.fromstring(item.get_content())
-    blocks = []
-    # walk every element in document order (tree.iter() is depth-first)
-    for el in tree.iter():
-        if el.tag in _IMAGE_TAGS:
-            # handle <img>/<image> elements: resolve their src to an absolute
-            # in-EPUB path and record an image block if that path really
-            # exists in the manifest
-            src = _getImageSrc(el)
-            if not src:
-                continue
-            path = _resolveHref(item, src)
-            if book.get_item_with_href(path) is not None:  # confirm it actually exists
-                blocks.append({'type': 'image', 'path': path, 'alt': el.get('alt', '')})
-            continue
-
-        if el.tag not in _BLOCK_TAGS:
-            # skip inline elements (span, a, em, etc.) -- their text is
-            # picked up later via text_content() on their containing block
-            continue
-        if any(a.tag in _BLOCK_TAGS for a in el.iterancestors()):
-            # skip block elements nested inside another block element (e.g. a
-            # <p> inside a <div>) so we don't emit the same text twice --
-            # only the outermost block in a nesting chain is processed
-            continue
-
-        # determine text alignment: an inline style="text-align:..." wins,
-        # otherwise fall back to whatever the element's CSS class resolves to
-        # via the alignMap built by getAlignmentMap()
-        align = None
-        style = el.get('style') or ''
-        if 'text-align' in style:
-            for part in style.split(';'):
-                if 'text-align' in part:
-                    align = part.split(':')[1].strip()
-        if align is None:
-            for cls in (el.get('class') or '').split():
-                if cls in alignMap:
-                    align = alignMap[cls]
-                    break
-
-        # split this block's text on real paragraph breaks (see
-        # _blockToParagraphs) and emit one text block per resulting paragraph
-        for text in _blockToParagraphs(el):
-            blocks.append({'type': 'text', 'tag': el.tag, 'text': text, 'align': align})
-
-    return blocks
-
 #gets the internal epub path to the cover/front-page image, for fast retrieval later
 def getCoverImagePath(book):
     # EPUB3: manifest item marked properties="cover-image"
@@ -349,6 +277,10 @@ def getChapterBlocksIter(book, chapter, alignMap=None):
             return
 
     tree = html.fromstring(item.get_content())
+    # resolve this chapter's raw (selector, align) rules against THIS tree
+    # via real CSS selector matching; keepAlive must stay in scope as long
+    # as elementAlign is being used, or id() keys can go stale/collide
+    elementAlign, keepAlive = resolveAlignmentForTree(tree, alignMap)
     for el in tree.iter():
         if el.tag in _IMAGE_TAGS:
             src = _getImageSrc(el)
@@ -372,10 +304,7 @@ def getChapterBlocksIter(book, chapter, alignMap=None):
                 if 'text-align' in part:
                     align = part.split(':')[1].strip()
         if align is None:
-            for cls in (el.get('class') or '').split():
-                if cls in alignMap:
-                    align = alignMap[cls]
-                    break
+            align = elementAlign.get(id(el))
 
         for text in _blockToParagraphs(el):
             yield {'type': 'text', 'tag': el.tag, 'text': text, 'align': align}
@@ -421,36 +350,6 @@ def _fitWordBoundary(doc, cursor, pageHeight, text):
     return fitCount, ' '.join(words[:fitCount])
 
 #takes items from the getChapterBlocks generators and attempts to fit them on the page to determine where the page boundaries are
-#
-#This is the core pagination primitive: it renders sentence/image items one
-#at a time into textEdit's QTextDocument, checking the rendered height after
-#each insertion, until adding the next item would overflow the page
-#(pageHeight, the viewport's current height). It both PRODUCES the visible
-#page (as a side effect of inserting into doc/cursor) and RETURNS bookkeeping
-#about where the page ended, so callers can figure out where the next page
-#should start.
-#
-#Params:
-#  itemsIter    - iterator of remaining sentence/image dicts (from
-#                 blocksToItemsIter) for this chapter
-#  pendingItem  - if not None, a single item that should be inserted first
-#                 (used when resuming a chapter mid-sentence -- see
-#                 pendingOffset below), before pulling anything from itemsIter
-#  pendingOffset- character offset into pendingItem['text'] to start from
-#                 (lets a sentence that was split across two pages resume
-#                 partway through, instead of being duplicated in full)
-#
-#Returns a 3-tuple:
-#  (overflowItem, nextOffset, placed)
-#    overflowItem - the item that didn't fit and starts the NEXT page, or
-#                    None if every remaining item fit on this page (i.e. this
-#                    was the chapter's last page)
-#    nextOffset   - 0 normally; if overflowItem is a sentence that was split
-#                    mid-sentence (see _fitWordBoundary), the character
-#                    offset within it where the next page should resume
-#    placed       - list of the items that were fully placed on this page,
-#                    in order (used by callers to count how far pagination
-#                    advanced)
 def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn):
     doc = textEdit.document()
     doc.clear()
@@ -536,20 +435,25 @@ def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, ge
                 # leading whitespace
                 while nextOffset < len(item['text']) and item['text'][nextOffset] == ' ':
                     nextOffset += 1
-                placed.append({**item, 'text': fittedText})
+                fragment = {**item, 'text': fittedText}
+                if offset > 0:
+                    # this fragment is itself a continuation AND gets split
+                    # again -- a sentence spanning 3+ pages
+                    fragment['continuation'] = True
+                placed.append(fragment)
                 return item, nextOffset, placed
 
             # normal case: this item didn't fit at all -- it becomes the
             # first item of the next page, starting from its own beginning
             return item, 0, placed
 
-        # item fit fully -- keep it and move on to the next one
+         # item fit fully -- keep it and move on to the next one
         if offset > 0:
             # this was a continuation of a sentence split across the page
             # boundary -- record only the portion actually rendered here,
-            # not the original full item, or the next re-render of this
-            # page would duplicate the part already shown on the prior page
-            placed.append({**item, 'text': item['text'][offset:]})
+            # tagged 'continuation' so item-counting code (getPageWithPosition,
+            # setPositionTopPage) doesn't treat it as a new original item
+            placed.append({**item, 'text': item['text'][offset:], 'continuation': True})
         else:
             placed.append(item)
         firstInsert = False
@@ -558,36 +462,10 @@ def fillPageAndCapture(book, textEdit, itemsIter, pendingItem, pendingOffset, ge
     # ran out of items entirely -- everything fit, this is the chapter's last page
     return None, 0, placed
 
-#a single, addressable location within the book: which chapter (spine
-#index), which sentence/image item within that chapter's flattened item
-#list (see blocksToItemsIter), and optionally a character offset into that
-#item's text (used when a sentence is split across two pages). This is the
-#unit used throughout the module to mark "the top of the current page",
-#"where the user last left off", pagination boundaries, etc.
-@dataclass
-class ReadingPosition:
-    chapter: int
-    itemIndex: int
-    charOffset: int = 0
-
-#internal: paginates an already-extracted list of `items` forward starting at
-#(startItemIndex, startCharOffset), returning page-start positions. The first
-#entry is always (chapter, startItemIndex, startCharOffset). This is the core
-#forward-fill loop shared by buildPageIndex, whether starting at the top of
-#the chapter or at some arbitrary anchor sentence.
-def _paginateFrom(book, textEdit, chapter, getImageDataFn, items, startItemIndex, startCharOffset):
-    positions = [ReadingPosition(chapter, startItemIndex, startCharOffset)]
-
-    if startCharOffset > 0:
-        pendingItem = items[startItemIndex]
-        pendingOffset = startCharOffset
-        itemsIter = iter(items[startItemIndex + 1:])
-    else:
-        pendingItem = None
-        pendingOffset = 0
-        itemsIter = iter(items[startItemIndex:])
-
-    itemsConsumedSoFar = startItemIndex
+#uses fill Page And Capture to return lists of items, each representing a page
+def _paginateFrom(book, textEdit, chapter, getImageDataFn, items, startItemIndex):
+    itemsIter = iter(items[startItemIndex:])
+    pendingItem, pendingOffset = None, 0
     pageItems = []
 
     while True:
@@ -595,121 +473,36 @@ def _paginateFrom(book, textEdit, chapter, getImageDataFn, items, startItemIndex
             book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn)
         pageItems.append(placed)
         if nextPendingItem is not None:
-            if nextPendingOffset > 0:
-                nextItemIndex = itemsConsumedSoFar + len(placed) - 1
-            else:
-                nextItemIndex = itemsConsumedSoFar + len(placed)
-            positions.append(ReadingPosition(chapter, nextItemIndex, nextPendingOffset))
-            itemsConsumedSoFar = nextItemIndex
             pendingItem, pendingOffset = nextPendingItem, nextPendingOffset
         else:
             break
 
     return pageItems
 
-#internal: paginates items[:stopItemIndex] (plus a truncated copy of
-#items[stopItemIndex] cut off at stopCharOffset, if the anchor lands
-#mid-sentence) forward from the start of the chapter. Used to fill in the
-#pages that come BEFORE a pinned anchor point without letting any of them
-#run past it. The last page produced here may end up shorter than a full
-#page -- it can't borrow content from the anchor's page, since the anchor
-#must stay fixed at the top of its page.
-def _paginateUpTo(book, textEdit, chapter, getImageDataFn, items, stopItemIndex, stopCharOffset):
+#uses paginates from the beginning of the book only uses items up to the point the reader is at
+def _paginateUpTo(book, textEdit, chapter, getImageDataFn, items, stopItemIndex):
     boundedItems = items[:stopItemIndex]
-    if stopCharOffset > 0 and stopItemIndex < len(items) and items[stopItemIndex]['type'] == 'text':
-        partial = dict(items[stopItemIndex])
-        partial['text'] = partial['text'][:stopCharOffset]
-        if partial['text'].strip():
-            boundedItems = boundedItems + [partial]
-
     if not boundedItems:
         return []
 
-    return _paginateFrom(book, textEdit, chapter, getImageDataFn, boundedItems, 0, 0)
+    return _paginateFrom(book, textEdit, chapter, getImageDataFn, boundedItems, 0)
 
-#builds the full forward page index for a chapter.
-#
-#If `anchor` is given (a ReadingPosition within this chapter), pagination is
-#pinned so that a page boundary lands exactly at the anchor -- this is what
-#you want after a font-size change, so the sentence currently at the top of
-#the page stays at the top of the page instead of drifting. Pages after the
-#anchor are paginated forward starting at the anchor; pages before it are
-#paginated forward from the start of the chapter but truncated so they never
-#cross the anchor (see _paginateUpTo).
-#
-#Without an anchor, this just paginates the whole chapter from the start,
-#same as before.
-def buildPageIndex(book, textEdit, chapter, anchor=None):
-    getImageDataFn=getImageData
+#uses paginateFrom and paginateUpTo to return pages of items centered around an anchor if given
+def buildPageIndex(book, textEdit, chapter, anchorItemIndex=None):
+    getImageDataFn = getImageData
     items = list(blocksToItemsIter(getChapterBlocksIter(book, chapter)))
 
     if not items:
-        return [ReadingPosition(chapter, 0, 0)]
+        return [[]]
 
-    if anchor is None or (anchor.itemIndex == 0 and anchor.charOffset == 0):
-        return _paginateFrom(book, textEdit, chapter, getImageDataFn, items, 0, 0)
+    if not anchorItemIndex:
+        return _paginateFrom(book, textEdit, chapter, getImageDataFn, items, 0)
 
-    beforePages = _paginateUpTo(book, textEdit, chapter, getImageDataFn, items,
-                                 anchor.itemIndex, anchor.charOffset)
-    afterPages = _paginateFrom(book, textEdit, chapter, getImageDataFn, items,
-                                anchor.itemIndex, anchor.charOffset)
-    return beforePages.extend(afterPages)
+    beforePages = _paginateUpTo(book, textEdit, chapter, getImageDataFn, items, anchorItemIndex)
+    afterPages = _paginateFrom(book, textEdit, chapter, getImageDataFn, items, anchorItemIndex)
+    beforePages.extend(afterPages)
+    return beforePages
 
-def findPageForPosition(pageIndex, savedPosition):
-    """Given a rebuilt pageIndex (after a font/size change) and a saved
-    ReadingPosition, finds which page NOW contains that sentence."""
-    bestPage = 0
-    # pageIndex entries are in order, each marking where a page STARTS.
-    # keep advancing bestPage as long as a page's start is still at or
-    # before the saved sentence; the first page whose start goes past it
-    # means the previous bestPage is the one that contains it.
-    for i, pos in enumerate(pageIndex):
-        if pos.chapter != savedPosition.chapter:
-            continue
-        if pos.itemIndex <= savedPosition.itemIndex:
-            bestPage = i
-        else:
-            break
-    return bestPage
-
-
-#renders the current page in the text edit
-#Given a ReadingPosition marking the top of a page, re-derives that page's
-#content and draws it into textEdit by walking the chapter's items from the
-#start, skipping past everything before position.itemIndex, then filling the
-#page from there with fillPageAndCapture(). Also computes and returns the
-#ReadingPosition of the page that would come AFTER this one (or None if this
-#is the chapter's last page) -- this is used by buildPageIndex to advance
-#page-by-page through a chapter without keeping the whole item list in memory.
-def renderPageFrom(book, textEdit, position, getImageDataFn):
-    itemsIter = blocksToItemsIter(getChapterBlocksIter(book, position.chapter))
-    # advance past all items before this page's starting item
-    for _ in range(position.itemIndex):
-        if next(itemsIter, None) is None:
-            return None
-
-    if position.charOffset > 0:
-        # the page starts mid-sentence -- pull that sentence out as the
-        # "pending" item so fillPageAndCapture resumes it at charOffset
-        # instead of re-rendering it from the beginning
-        pendingItem = next(itemsIter, None)
-        pendingOffset = position.charOffset
-    else:
-        pendingItem = None
-        pendingOffset = 0
-
-    nextPendingItem, nextPendingOffset, placed = fillPageAndCapture(
-        book, textEdit, itemsIter, pendingItem, pendingOffset, getImageDataFn)
-
-    consumedThisPage = len(placed)
-
-    if nextPendingItem is not None:
-        # more content remains -- report where the following page would begin
-        nextItemIndex = position.itemIndex + consumedThisPage - 1
-        return ReadingPosition(position.chapter, nextItemIndex, nextPendingOffset)
-
-    # nothing left in this chapter after this page
-    return None
 
 #renders a fixed list of items into textEdit, one after another, with the
 #same paragraph/alignment/image handling as fillPageAndCapture -- but with

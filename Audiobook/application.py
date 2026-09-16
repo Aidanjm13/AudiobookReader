@@ -6,9 +6,9 @@ from ui_BookWindow import Ui_BookWindow
 from fileHandling import saveNewBook
 from SQLHandler import init_db, add_book, get_books_by_accessed, get_book, update_book
 from pathlib import Path
-from epubReader import getBook, getImageData, getLanguages, getCreators, getTitles, save_cover_image, renderItemsIntoTextEdit
+from epubReader import getBook, getLanguages, getCreators, getTitles, save_cover_image, renderItemsIntoTextEdit
 import os
-from bookPages import buildPages, getCurrentPageItems, goNextPage, goPrevPage
+from bookPages import buildPages, getCurrentPageItems, goNextPage, goPrevPage, get_book_pages
 from ttsWorker import get_tts_worker
 
 SUPPORTED_FILE_TYPES = {"epub"} #currently supported file types
@@ -186,6 +186,10 @@ class BookWindow(QMainWindow):
     def resizeEvent(self, event):
             super().resizeEvent(event)
 
+    def closeEvent(self, event):
+        get_book_pages().close_book(self.id)
+        super().closeEvent(event)
+
     #is called when the book first opens, builds the index and renders the currentpage
     def _loadInitialPage(self):
         buildPages(self.id,self.ui.TextArea)
@@ -206,9 +210,6 @@ class BookWindow(QMainWindow):
         goPrevPage(self.id, self.ui.TextArea)
         self.renderCurrentPage()
 
-    def _saveProgress(self):
-        position = self.pageIndex[self.currentPage]
-        update_book(self.id, chapter=position.chapter, sentence = position.itemIndex)
 
     def schedule_font_size_change(self):
         self.font_size_timer.start(500)  # restart the 500ms countdown

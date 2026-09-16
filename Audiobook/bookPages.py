@@ -69,6 +69,8 @@ class BookPages:
             self._pages.pop(book_id, None)
             self._positions.pop(book_id, None)
             self._fileType.pop(book_id, None)
+            self._indexes.pop(book_id, None)
+            self._paths.pop(book_id, None)
 
 
 _book_pages = None
@@ -90,14 +92,17 @@ def buildPages(book_id, textEdit, anchorTop = False):
     bookPages = get_book_pages()
     bookPages.open_book(book_id)
     position = bookPages.get_position(book_id)
-    if(anchorTop): #then setPosition as top of the page
+
+    anchorItemIndex = None
+    if anchorTop: #then setPosition as top of the page, and anchor pagination to it
         page = bookPages.get_page(book_id)
         if(page is not None):
             position[1] = setPositionTopPage(bookPages, book_id, page, position[0])
-        
+            anchorItemIndex = position[1]
+
     match bookPages.get_fileType(book_id):
         case "epub":
-            items = buildPageIndex(getBook(bookPages.get_path(book_id)),textEdit,position[0])
+            items = buildPageIndex(getBook(bookPages.get_path(book_id)),textEdit,position[0],anchorItemIndex)
             bookPages.set_indexes(book_id, items)
             bookPages.set_page(book_id,getPageWithPosition(bookPages, book_id, position[1]))
         case _:
@@ -109,7 +114,10 @@ def getPageWithPosition(bookPages, book_id, position):
     pages = bookPages.get_indexes(book_id)
     itemCount = 0
     for i in range(len(pages)):
-        itemCount += len(pages[i])
+        page = pages[i]
+        # a continuation fragment, if present, is always page[0] -- see
+        # fillPageAndCapture: offset>0 only happens on the first item pulled
+        itemCount += len(page) - (1 if page and page[0].get('continuation') else 0)
         if(itemCount > position): return i
     return -1 #position not found
 
@@ -118,7 +126,8 @@ def setPositionTopPage(bookPages, book_id, currentPageNum, chapter):
     pages = bookPages.get_indexes(book_id)
     itemCount = 0
     for i in range(currentPageNum):
-        itemCount += len(pages[i])
+        page = pages[i]
+        itemCount += len(page) - (1 if page and page[0].get('continuation') else 0)
     bookPages.set_position(book_id, chapter, itemCount)
     return itemCount
 
