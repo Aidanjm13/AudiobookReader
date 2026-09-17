@@ -1,6 +1,7 @@
 import threading
 from SQLHandler import get_book, update_book_position
 from epubReader import buildPageIndex, getBook
+from ttsWorker import tts_set_page, repaginate_book, tts_close_book
 
 #this class is for storing the pagination of text for the currently opened books
 #also has helper functions for getting and storing pages
@@ -71,6 +72,7 @@ class BookPages:
             self._fileType.pop(book_id, None)
             self._indexes.pop(book_id, None)
             self._paths.pop(book_id, None)
+        tts_close_book(book_id)
 
 
 _book_pages = None
@@ -92,7 +94,6 @@ def buildPages(book_id, textEdit, anchorTop = False):
     bookPages = get_book_pages()
     bookPages.open_book(book_id)
     position = bookPages.get_position(book_id)
-
     anchorItemIndex = None
     if anchorTop: #then setPosition as top of the page, and anchor pagination to it
         page = bookPages.get_page(book_id)
@@ -104,9 +105,14 @@ def buildPages(book_id, textEdit, anchorTop = False):
         case "epub":
             items = buildPageIndex(getBook(bookPages.get_path(book_id)),textEdit,position[0],anchorItemIndex)
             bookPages.set_indexes(book_id, items)
-            bookPages.set_page(book_id,getPageWithPosition(bookPages, book_id, position[1]))
+            page = getPageWithPosition(bookPages, book_id, position[1])
+            bookPages.set_page(book_id,page)
         case _:
             return
+    page = bookPages.get_page(book_id)
+    #book was repaginated, tell tts worker
+    repaginate_book(book_id,page)
+    
 
 #determines which page the book is on based on the item that number that it is on
 #positions are 0 indexed
@@ -140,6 +146,13 @@ def getCurrentPageItems(book_id, offset = 0):
     if(page < 0 or page >= len(indexes)): return None
     return indexes[page]
 
+#gets the items for a specific page in the book
+def getPageItems(book_id, pageNum):
+    bookPages = get_book_pages()
+    indexes = bookPages.get_indexes(book_id)
+    if(pageNum < 0 or pageNum >= len(indexes)): return None
+    return indexes[pageNum]
+
 #updates the book to the next page, moving it to the next chapter if needed
 def goNextPage(book_id, textArea):
     bookPages = get_book_pages()
@@ -154,6 +167,7 @@ def goNextPage(book_id, textArea):
         bookPages.set_page(book_id, currentPage+1)
         setPositionTopPage(bookPages, book_id, currentPage+1, position[0])
     saveProgress(book_id)
+    setTTSWorkerPage(book_id)
 
 def goPrevPage(book_id, textArea):
     bookPages = get_book_pages()
@@ -170,9 +184,25 @@ def goPrevPage(book_id, textArea):
         bookPages.set_page(book_id, currentPage-1)
         setPositionTopPage(bookPages, book_id, currentPage-1, position[0])
     saveProgress(book_id)
+    setTTSWorkerPage(book_id)
 
 #saves new position to the database
 def saveProgress(book_id):
     bookpages = get_book_pages()
     position = bookpages.get_position(book_id)
     update_book_position(book_id, position[0], position[1])
+
+#updates the TTS worker with the current page
+def setTTSWorkerPage(book_id):
+    bookPages = get_book_pages()
+    page = bookPages.get_page(book_id)
+    if(page is None): return
+    tts_set_page(book_id, page)
+
+def getCurrentPage(book_id):
+    bookPages = get_book_pages()
+    return bookPages.get_page(book_id)
+
+def closeBook(book_id):
+    bookPages = get_book_pages()
+    bookPages.close_book(book_id)

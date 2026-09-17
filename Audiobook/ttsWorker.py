@@ -4,7 +4,7 @@ from textToSpeech import SynthesizeText
 
 #tts worker for managing text to audio files for multiple audiobooks at the same time, prioritizes active book
 #synthesize_fn is function for turning text to audio
-#page_source is function for getting text with book id and index
+#page_source is function for getting text with book id and index (page)
 #behing and ahead is how many indexes behind and ahead it should load as well
 class MultiBookTTSWorker:
     def __init__(self, synthesize_fn, page_source, behind=2, ahead=4):
@@ -13,8 +13,8 @@ class MultiBookTTSWorker:
         self.behind = behind
         self.ahead = ahead
 
-        self.cache = {}              # (book_id, page_index) -> audio
-        self.pending = set()         # (book_id, page_index, version)
+        self.cache = {}              # (book_id, page_num) -> [audio]
+        self.pending = set()         # (book_id, page_num, version)
         self.current_page = {}       # book_id -> current page index
         self.book_version = {}       # book_id -> int, bumped on repagination
         self.active_book = None
@@ -25,7 +25,19 @@ class MultiBookTTSWorker:
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
-    # ... _window_for, _in_window unchanged ...
+    #returns the (lo, hi) page range this book should keep cached, based on
+    #its current page and the worker's behind/ahead settings
+    def _window_for(self, book_id):
+        cur = self.current_page[book_id]
+        lo = max(0, cur - self.behind)
+        hi = cur + self.ahead
+        return lo, hi
+
+    #whether a given page index falls inside book_id's current cache window
+    def _in_window(self, book_id, index):
+        lo, hi = self._window_for(book_id)
+        return lo <= index <= hi
+    
     #what loops in the thread
     def _run(self):
         while not self._stop_event.is_set(): #while not stopped
@@ -38,8 +50,20 @@ class MultiBookTTSWorker:
                 version = self.book_version.get(book_id, 0)
                 self.pending.add((book_id, index, version))
 
-            text = self.page_source(book_id, index)
-            audio = self.synthesize(text)
+            #once a page is decided, get audio for each text item on that page, and store to cache
+            textItems = self.page_source(book_id, index)
+            if not textItems:
+                continue
+            audio = []
+            for item in textItems:
+                if item.get('type') == 'image': 
+                    continue
+                text = item.get('text', '').strip()
+                if not text:
+                    continue
+                pcm = self.synthesize(text)
+                print(f"[TTS Worker] Synthesized: '{text[:30]}...' -> {len(pcm)} bytes")
+                audio.append(pcm)
 
             with self.lock:
                 current_version = self.book_version.get(book_id, 0)
@@ -99,39 +123,49 @@ def get_tts_worker():
     if _worker is None:
         with _worker_lock:
             if _worker is None:  # double-checked locking
+                from bookPages import getPageItems
                 _worker = MultiBookTTSWorker(
                     synthesize_fn=SynthesizeText,
-                    page_source=getPageTextUnified,
+                    page_source=getPageItems,
                     behind=2,
                     ahead=4,
                 )
     return _worker
 
-# per-book dispatch table, filled in when a book is opened
-book_loaders = {}   # book_id -> loader function
+#called when the book is opened
+def tts_set_page(book_id, page):
+    worker = get_tts_worker()
+    with worker.cond:
+        worker.current_page[book_id] = page
+        worker.active_book = book_id
+        worker.cond.notify_all()  # wake worker to start processing this book
 
-#the index of the books so that it can be used to reconstruct text with the current positions
-book_indexes = {}
 
-#called when book is opened to set file type for loader and set it for the worker
-def open_book(book_id, file_type, start_page, book_index = None):
-    book_loaders[book_id] = LOADERS[file_type]
-    if(book_index): book_indexes[book_id] = book_index
-    _worker.open_book(book_id, start_page)
+#call when page boundaries change and book needs to be reloaded
+def repaginate_book(book_id, new_current_page=0):
+    worker = get_tts_worker()
+    worker.active_book = book_id
+    worker.repaginate_book(book_id, new_current_page)
 
-#TO DO:
-#used to get the text for a specific page with a book id
-#this will handle intersection of different file type page processing
-#book_id is the database id of the book, page_index is the page number / current position of the book
-def getPageTextUnified(book_id, page_index):
-    return book_loaders[book_id](book_id, page_index)
+#returns cached audio for a specific book page, or None if not synthesized yet
+#safe to call from any thread
+def get_page_audio(book_id, page):
+    worker = get_tts_worker()
+    with worker.lock:
+        return worker.cache.get((book_id, page))
 
-#takes id and position for an epub file and returns the text for that page
-def getPageTextEpub(book_id, page_index):
-
-    return
-
-# a registry mapping file_type -> loader function
-LOADERS = {
-    "epub": getPageTextEpub
-}
+#closes book with this id
+def tts_close_book(book_id):
+    worker = get_tts_worker()
+    with worker.cond:
+        if book_id in worker.current_page:
+            del worker.current_page[book_id]
+        if book_id in worker.book_version:
+            del worker.book_version[book_id]
+        # drop every cached page for this book
+        for key in list(worker.cache.keys()):
+            if key[0] == book_id:
+                del worker.cache[key]
+        if worker.active_book == book_id:
+            worker.active_book = None
+        worker.cond.notify_all()  # wake worker to update its state
