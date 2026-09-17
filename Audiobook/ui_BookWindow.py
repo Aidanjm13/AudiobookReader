@@ -87,6 +87,11 @@ class Ui_BookWindow(object):
 
         self.ControlsArea.addWidget(self.FontEntry)
 
+        self.AudioStart = QPushButton(self.centralwidget)
+        self.AudioStart.setObjectName(u"AudioStart")
+
+        self.ControlsArea.addWidget(self.AudioStart)
+
 
         self.horizontalLayout.addLayout(self.ControlsArea)
 
@@ -105,5 +110,6 @@ class Ui_BookWindow(object):
         self.prevPageButton.setText(QCoreApplication.translate("BookWindow", u"Previous Page", None))
         self.nextPageButton.setText(QCoreApplication.translate("BookWindow", u"Next Page", None))
         self.FontEntry.setPrefix(QCoreApplication.translate("BookWindow", u"Font Size: ", None))
+        self.AudioStart.setText(QCoreApplication.translate("BookWindow", u"Start / Stop Audio", None))
     # retranslateUi
 
