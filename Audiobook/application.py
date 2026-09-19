@@ -19,11 +19,9 @@ SUPPORTED_FILE_TYPES = {"epub"}
 class MainWindow(QMainWindow):
     def __init__(self):
         init_db()
-
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-
         self.ui.uploadFilesButton.clicked.connect(self.on_upload_clicked)
 
         self.books_rows = 2
@@ -36,7 +34,6 @@ class MainWindow(QMainWindow):
         self.cover_size = self.default_cover_size
         self.setup_books_area()
         self.load_books()
-
         self.openBookWindows = []
 
     def on_upload_clicked(self):
@@ -61,11 +58,9 @@ class MainWindow(QMainWindow):
         self.ui.booksScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.ui.booksScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.ui.booksScrollArea.setWidgetResizable(True)
-
         self.ui.scrollAreaWidgetContents.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
-
         layout = self.ui.scrollAreaWidgetContents.layout()
         if layout is None:
             layout = QGridLayout(self.ui.scrollAreaWidgetContents)
@@ -77,10 +72,8 @@ class MainWindow(QMainWindow):
     def calculate_cover_size(self):
         viewport = self.ui.booksScrollArea.viewport()
         margins = self.books_layout.contentsMargins()
-
         available_height = viewport.height() - margins.top() - margins.bottom()
         available_height -= self.cover_spacing * (self.books_rows - 1)
-
         needed_height = self.default_cover_size.height() * self.books_rows
 
         scale = available_height / needed_height
@@ -136,7 +129,6 @@ class MainWindow(QMainWindow):
 
         icon = QIcon(cover_path)
         if icon.isNull():
-            print(f"Warning: could not load cover image: {cover_path}")
             btn.setText(title)
         else:
             btn.setIcon(icon)
@@ -165,44 +157,38 @@ class BookWindow(QMainWindow):
         self.sentence = self.databaseBook.sentence
 
         # Audio format configuration
-        device = QMediaDevices.defaultAudioOutput()
-        preferred = device.preferredFormat()
+        self.device = QMediaDevices.defaultAudioOutput()
+        preferred = self.device.preferredFormat()
         
-        fmt = QAudioFormat()
-        fmt.setSampleFormat(QAudioFormat.SampleFormat.Int16)
-        fmt.setSampleRate(preferred.sampleRate() if preferred.sampleRate() > 0 else 48000)
-        fmt.setChannelCount(1)
+        self.audio_fmt = QAudioFormat()
+        self.audio_fmt.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+        self.audio_fmt.setSampleRate(preferred.sampleRate() if preferred.sampleRate() > 0 else 48000)
+        self.audio_fmt.setChannelCount(1)
 
-        if not device.isFormatSupported(fmt):
-            fmt.setChannelCount(preferred.channelCount() if preferred.channelCount() > 0 else 2)
+        if not self.device.isFormatSupported(self.audio_fmt):
+            self.audio_fmt.setChannelCount(preferred.channelCount() if preferred.channelCount() > 0 else 2)
 
-        if not device.isFormatSupported(fmt):
-            fmt = preferred
+        if not self.device.isFormatSupported(self.audio_fmt):
+            self.audio_fmt = preferred
 
-        active_sample_rate = fmt.sampleRate()
-        active_channels = fmt.channelCount()
-        set_audio_format(active_sample_rate, active_channels)
+        self.active_sample_rate = self.audio_fmt.sampleRate()
+        self.active_channels = self.audio_fmt.channelCount()
+        set_audio_format(self.active_sample_rate, self.active_channels)
 
-        # Buffer and worker setup
-        self.audio_buffer = StreamingAudioBuffer(sample_rate=active_sample_rate, channels=active_channels)
-        self.audio_buffer.open(QIODevice.ReadOnly)
-        self.audio_buffer.page_finished.connect(self.on_audio_page_finished)
-        self.audio_buffer.clip_started.connect(self.on_clip_started)
-        self.audio_buffer.clip_finished.connect(self.on_clip_finished)
-        self.audio_buffer.buffer_low.connect(self._on_buffer_low)
+        # Lifecycle objects - created fresh on play, destroyed on stop
+        self.audio_buffer = None
+        self.sink = None
+        self.audioState = -1  # -1 = Stopped, 0 = Paused, 1 = Playing
 
-        self.sink = QAudioSink(device, fmt)
-        self.sink.setVolume(1.0)
-        self.audioState = -1
-        self.sink.stateChanged.connect(self._on_audio_state_changed)
-
+        # Worker initialization
         self.tts_worker = get_tts_worker()
-        self.tts_worker.item_synthesized.connect(self._on_item_synthesized)
+        self.tts_worker.item_synthesized.connect(self._on_item_synthesized, Qt.QueuedConnection)
 
+        # Granular streaming state
         self._current_page_items = []
         self._queue_cursor = 0
         self._pending_page = 0
-        self._play_generation = 0 #adds generation for audio requests so that when it changes, it clears old audio
+        self._play_generation = 0
 
         QTimer.singleShot(0, self._loadInitialPage)
 
@@ -210,6 +196,7 @@ class BookWindow(QMainWindow):
         self.ui.prevPageButton.clicked.connect(lambda: self.goPrevious(True))
         self.ui.AudioStart.clicked.connect(self.toggle_audio)
 
+        # Font timer setup
         self.font_size_timer = QTimer()
         self.font_size_timer.setSingleShot(True)
         self.font_size_timer.timeout.connect(self.change_font_size)
@@ -250,7 +237,7 @@ class BookWindow(QMainWindow):
         self.renderCurrentPage()
 
     def schedule_font_size_change(self):
-        self.stop_audio()  # Cut audio the instant user adjusts font size
+        self.stop_audio()
         self.font_size_timer.start(500)
 
     def change_font_size(self):
@@ -262,13 +249,39 @@ class BookWindow(QMainWindow):
         buildPages(self.id, self.ui.TextArea, True)
         self.renderCurrentPage()
 
+    def stop_audio(self):
+        self._play_generation += 1  # Block upcoming pipeline deliveries
+        self.audioState = -1
+        
+        # 1. Kill hardware stream securely
+        if self.sink is not None:
+            self.sink.stop()
+            self.sink.deleteLater()
+            self.sink = None
+
+        # 2. Kill the device it was reading from
+        if self.audio_buffer is not None:
+            self.audio_buffer.close()
+            self.audio_buffer.deleteLater()
+            self.audio_buffer = None
+
+        # 3. Clear pending syntheses
+        self.tts_worker.clear_queue(self.id)
+
     # --- Item Streaming & Queue Handling ---
     def _queue_page_audio(self, page):
-        self._play_generation += 1  # Invalidate any chunk currently being synthesized
+        self.stop_audio()
+        self.audioState = 1
         self._pending_page = page
-        self.tts_worker.clear_queue(self.id)
-        self.audio_buffer.clear()
         tts_set_page(self.id, page)
+
+        # Create fresh buffer explicitly for this playback session
+        self.audio_buffer = StreamingAudioBuffer(sample_rate=self.active_sample_rate, channels=self.active_channels)
+        self.audio_buffer.page_finished.connect(self.on_audio_page_finished)
+        self.audio_buffer.clip_started.connect(self.on_clip_started)
+        self.audio_buffer.clip_finished.connect(self.on_clip_finished)
+        self.audio_buffer.buffer_low.connect(self._on_buffer_low)
+        self.audio_buffer.open(QIODevice.ReadOnly)
 
         raw_items = getCurrentPageItems(self.id) or []
         self._current_page_items = [
@@ -291,54 +304,57 @@ class BookWindow(QMainWindow):
         for _ in range(count):
             if self._queue_cursor < len(self._current_page_items):
                 idx, text = self._current_page_items[self._queue_cursor]
-                # Pass self._play_generation into the worker queue
                 self.tts_worker.queue_item(self.id, self._pending_page, idx, text, self._play_generation)
                 self._queue_cursor += 1
 
     def _on_buffer_low(self):
-        # Only queue ahead if audio is actively enabled/playing
         if self.audioState == 1 and self._queue_cursor < len(self._current_page_items):
             self._queue_next_items(count=1)
 
     def _on_item_synthesized(self, book_id: int, page_index: int, item_index: int, pcm_bytes: bytes, generation: int):
-        # Drop chunk if it was synthesized from before the font change / page flip
+        # Reject stale chunks from previous playback sessions
         if book_id != self.id or page_index != self._pending_page or generation != self._play_generation:
+            return
+
+        # Must have an active buffer to feed
+        if not self.audio_buffer:
             return
 
         clip_id = f"{book_id}-{page_index}-{item_index}"
         self.audio_buffer.feed(clip_id, pcm_bytes, item_index, page_index)
 
-        if self.audioState == 1 and self.sink.state() in (QAudio.StoppedState, QAudio.IdleState):
-            self.sink.stop()
+        # Create and bind the hardware stream the first time a chunk arrives for this session
+        if self.audioState == 1 and self.sink is None:
+            self.sink = QAudioSink(self.device, self.audio_fmt)
+            self.sink.setVolume(1.0)
+            self.sink.stateChanged.connect(self._on_audio_state_changed)
             self.sink.start(self.audio_buffer)
 
     def toggle_audio(self):
         if self.audioState == -1:
-            self.audioState = 1
             cur_page = getCurrentPage(self.id)
             self._queue_page_audio(cur_page)
         elif self.audioState == 1:
-            self.sink.suspend()
             self.audioState = 0
+            if self.sink:
+                self.sink.suspend()
         elif self.audioState == 0:
-            self.sink.resume()
             self.audioState = 1
-
-    def stop_audio(self):
-        self._play_generation += 1  # Invalidate in-flight synthesis
-        
-        # Stop and reset the sink
-        if hasattr(self, 'sink') and self.sink is not None:
-            self.sink.stop()
-            self.sink.reset()  # Flushes any hardware/driver buffers
-            
-        self.audio_buffer.clear()
-        self.tts_worker.clear_queue(self.id)
-        self.audioState = -1
+            if self.sink:
+                self.sink.resume()
 
     def on_audio_page_finished(self, page):
-        self.goNext(False)
-        self._queue_page_audio(page + 1)
+        # Defer the page transition to the main event loop!
+        # This allows the C++ audio thread to safely finish its current 
+        # callback BEFORE we destroy the sink and buffer.
+        QTimer.singleShot(0, lambda: self._transition_to_next_page(page))
+
+    def _transition_to_next_page(self, page):
+        # We only want to advance if the user hasn't manually clicked away
+        # or stopped the audio in the fraction of a second we waited.
+        if self.audioState == 1 and self._pending_page == page:
+            self.goNext(False)
+            self._queue_page_audio(page + 1)
 
     def on_clip_started(self, clip_id, item_index):
         pass
@@ -353,8 +369,8 @@ class BookWindow(QMainWindow):
             QAudio.StoppedState: "Stopped",
             QAudio.IdleState: "Idle (Waiting for audio data / buffer empty)"
         }
-        print(f"[QAudioSink] State: {state_names.get(state, state)} | Error: {self.sink.error()}")
-
+        if self.sink:
+            print(f"[QAudioSink] State: {state_names.get(state, state)} | Error: {self.sink.error()}")
 
 if __name__ == "__main__":
     app = QApplication([])
