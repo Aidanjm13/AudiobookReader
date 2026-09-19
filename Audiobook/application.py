@@ -304,6 +304,11 @@ class BookWindow(QMainWindow):
         for _ in range(count):
             if self._queue_cursor < len(self._current_page_items):
                 idx, text = self._current_page_items[self._queue_cursor]
+                
+                # Add this print statement to see what enters the queue
+                preview = text[:40].replace('\n', ' ') + ("..." if len(text) > 40 else "")
+                print(f"[Pipeline] Queuing page {self._pending_page}, item {idx}: '{preview}'")
+                
                 self.tts_worker.queue_item(self.id, self._pending_page, idx, text, self._play_generation)
                 self._queue_cursor += 1
 

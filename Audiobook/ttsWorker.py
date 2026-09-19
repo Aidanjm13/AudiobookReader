@@ -58,6 +58,11 @@ class MultiBookTTSWorker(QObject):
             try:
                 pcm = self.synthesize(text)
                 if pcm:
+                    # Add these print statements to track memory usage per item
+                    size_kb = len(pcm) / 1024
+                    preview = text[:40].replace('\n', ' ') + ("..." if len(text) > 40 else "")
+                    print(f"[TTS Worker] Synthesized item {item_index}: '{preview}' -> {len(pcm)} bytes ({size_kb:.2f} KB)")
+                    
                     self.item_synthesized.emit(book_id, page_index, item_index, pcm, generation)
             except Exception as e:
                 print(f"[TTSWorker] Error synthesizing item {item_index} on page {page_index}: {e}")
