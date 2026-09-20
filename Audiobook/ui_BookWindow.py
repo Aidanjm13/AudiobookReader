@@ -15,9 +15,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QDoubleSpinBox, QHBoxLayout, QMainWindow,
-    QPushButton, QSizePolicy, QTextEdit, QVBoxLayout,
-    QWidget)
+from PySide6.QtWidgets import (QApplication, QDoubleSpinBox, QHBoxLayout, QLabel,
+    QLayout, QMainWindow, QPushButton, QSizePolicy,
+    QSlider, QTextEdit, QVBoxLayout, QWidget)
 
 class Ui_BookWindow(object):
     def setupUi(self, BookWindow):
@@ -78,7 +78,10 @@ class Ui_BookWindow(object):
         self.horizontalLayout.addLayout(self.verticalLayout)
 
         self.ControlsArea = QVBoxLayout()
+        self.ControlsArea.setSpacing(13)
         self.ControlsArea.setObjectName(u"ControlsArea")
+        self.ControlsArea.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self.ControlsArea.setContentsMargins(-1, 350, -1, 293)
         self.FontEntry = QDoubleSpinBox(self.centralwidget)
         self.FontEntry.setObjectName(u"FontEntry")
         self.FontEntry.setMinimum(1.000000000000000)
@@ -87,23 +90,97 @@ class Ui_BookWindow(object):
 
         self.ControlsArea.addWidget(self.FontEntry)
 
-        self.volume = QDoubleSpinBox(self.centralwidget)
-        self.volume.setObjectName(u"volume")
-        self.volume.setSingleStep(0.100000000000000)
-        self.volume.setValue(1.000000000000000)
+        self.volumeLayout = QVBoxLayout()
+        self.volumeLayout.setSpacing(0)
+        self.volumeLayout.setObjectName(u"volumeLayout")
+        self.volumeLayout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        self.volumeLayout.setContentsMargins(-1, 0, -1, 0)
+        self.horizontalLayout_4 = QHBoxLayout()
+        self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
+        self.label = QLabel(self.centralwidget)
+        self.label.setObjectName(u"label")
+        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        sizePolicy2.setHorizontalStretch(0)
+        sizePolicy2.setVerticalStretch(0)
+        sizePolicy2.setHeightForWidth(self.label.sizePolicy().hasHeightForWidth())
+        self.label.setSizePolicy(sizePolicy2)
 
-        self.ControlsArea.addWidget(self.volume)
+        self.horizontalLayout_4.addWidget(self.label)
+
+        self.doubleSpinBox = QDoubleSpinBox(self.centralwidget)
+        self.doubleSpinBox.setObjectName(u"doubleSpinBox")
+        self.doubleSpinBox.setDecimals(2)
+        self.doubleSpinBox.setMaximum(1.000000000000000)
+        self.doubleSpinBox.setSingleStep(0.010000000000000)
+        self.doubleSpinBox.setValue(0.500000000000000)
+
+        self.horizontalLayout_4.addWidget(self.doubleSpinBox)
+
+
+        self.volumeLayout.addLayout(self.horizontalLayout_4)
+
+        self.volumeSlider = QSlider(self.centralwidget)
+        self.volumeSlider.setObjectName(u"volumeSlider")
+        self.volumeSlider.setMaximum(100)
+        self.volumeSlider.setValue(50)
+        self.volumeSlider.setOrientation(Qt.Orientation.Horizontal)
+
+        self.volumeLayout.addWidget(self.volumeSlider)
+
+
+        self.ControlsArea.addLayout(self.volumeLayout)
+
+        self.speedLayout = QVBoxLayout()
+        self.speedLayout.setSpacing(0)
+        self.speedLayout.setObjectName(u"speedLayout")
+        self.speedLayout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        self.horizontalLayout_3 = QHBoxLayout()
+        self.horizontalLayout_3.setSpacing(0)
+        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
+        self.horizontalLayout_3.setContentsMargins(-1, -1, 0, -1)
+        self.speedLabel = QLabel(self.centralwidget)
+        self.speedLabel.setObjectName(u"speedLabel")
+        sizePolicy3 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Maximum)
+        sizePolicy3.setHorizontalStretch(0)
+        sizePolicy3.setVerticalStretch(0)
+        sizePolicy3.setHeightForWidth(self.speedLabel.sizePolicy().hasHeightForWidth())
+        self.speedLabel.setSizePolicy(sizePolicy3)
+
+        self.horizontalLayout_3.addWidget(self.speedLabel)
+
+        self.speedSpin = QDoubleSpinBox(self.centralwidget)
+        self.speedSpin.setObjectName(u"speedSpin")
+        self.speedSpin.setDecimals(2)
+        self.speedSpin.setMaximum(3.000000000000000)
+        self.speedSpin.setSingleStep(0.100000000000000)
+        self.speedSpin.setValue(1.000000000000000)
+
+        self.horizontalLayout_3.addWidget(self.speedSpin)
+
+
+        self.speedLayout.addLayout(self.horizontalLayout_3)
+
+        self.speedSlider = QSlider(self.centralwidget)
+        self.speedSlider.setObjectName(u"speedSlider")
+        self.speedSlider.setMaximum(300)
+        self.speedSlider.setSliderPosition(100)
+        self.speedSlider.setOrientation(Qt.Orientation.Horizontal)
+
+        self.speedLayout.addWidget(self.speedSlider)
+
+
+        self.ControlsArea.addLayout(self.speedLayout)
 
         self.AudioStart = QPushButton(self.centralwidget)
         self.AudioStart.setObjectName(u"AudioStart")
 
         self.ControlsArea.addWidget(self.AudioStart)
 
+        self.ControlsArea.setStretch(0, 1)
 
         self.horizontalLayout.addLayout(self.ControlsArea)
 
         self.horizontalLayout.setStretch(0, 5)
-        self.horizontalLayout.setStretch(1, 1)
         BookWindow.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(BookWindow)
@@ -117,6 +194,8 @@ class Ui_BookWindow(object):
         self.prevPageButton.setText(QCoreApplication.translate("BookWindow", u"Previous Page", None))
         self.nextPageButton.setText(QCoreApplication.translate("BookWindow", u"Next Page", None))
         self.FontEntry.setPrefix(QCoreApplication.translate("BookWindow", u"Font Size: ", None))
+        self.label.setText(QCoreApplication.translate("BookWindow", u"Volume:", None))
+        self.speedLabel.setText(QCoreApplication.translate("BookWindow", u"Speed:", None))
         self.AudioStart.setText(QCoreApplication.translate("BookWindow", u"Start / Stop Audio", None))
     # retranslateUi
 
