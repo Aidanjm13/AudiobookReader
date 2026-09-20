@@ -17,13 +17,14 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QApplication, QDoubleSpinBox, QHBoxLayout, QLabel,
     QLayout, QMainWindow, QPushButton, QSizePolicy,
-    QSlider, QTextEdit, QVBoxLayout, QWidget)
+    QSlider, QSpacerItem, QTextEdit, QVBoxLayout,
+    QWidget)
 
 class Ui_BookWindow(object):
     def setupUi(self, BookWindow):
         if not BookWindow.objectName():
             BookWindow.setObjectName(u"BookWindow")
-        BookWindow.resize(836, 827)
+        BookWindow.resize(836, 848)
         self.centralwidget = QWidget(BookWindow)
         self.centralwidget.setObjectName(u"centralwidget")
         self.horizontalLayout = QHBoxLayout(self.centralwidget)
@@ -81,7 +82,11 @@ class Ui_BookWindow(object):
         self.ControlsArea.setSpacing(13)
         self.ControlsArea.setObjectName(u"ControlsArea")
         self.ControlsArea.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
-        self.ControlsArea.setContentsMargins(-1, 350, -1, 293)
+        self.ControlsArea.setContentsMargins(-1, 0, -1, 0)
+        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+
+        self.ControlsArea.addItem(self.verticalSpacer)
+
         self.FontEntry = QDoubleSpinBox(self.centralwidget)
         self.FontEntry.setObjectName(u"FontEntry")
         self.FontEntry.setMinimum(1.000000000000000)
@@ -97,24 +102,24 @@ class Ui_BookWindow(object):
         self.volumeLayout.setContentsMargins(-1, 0, -1, 0)
         self.horizontalLayout_4 = QHBoxLayout()
         self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
-        self.label = QLabel(self.centralwidget)
-        self.label.setObjectName(u"label")
+        self.volumeLabel = QLabel(self.centralwidget)
+        self.volumeLabel.setObjectName(u"volumeLabel")
         sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         sizePolicy2.setHorizontalStretch(0)
         sizePolicy2.setVerticalStretch(0)
-        sizePolicy2.setHeightForWidth(self.label.sizePolicy().hasHeightForWidth())
-        self.label.setSizePolicy(sizePolicy2)
+        sizePolicy2.setHeightForWidth(self.volumeLabel.sizePolicy().hasHeightForWidth())
+        self.volumeLabel.setSizePolicy(sizePolicy2)
 
-        self.horizontalLayout_4.addWidget(self.label)
+        self.horizontalLayout_4.addWidget(self.volumeLabel)
 
-        self.doubleSpinBox = QDoubleSpinBox(self.centralwidget)
-        self.doubleSpinBox.setObjectName(u"doubleSpinBox")
-        self.doubleSpinBox.setDecimals(2)
-        self.doubleSpinBox.setMaximum(1.000000000000000)
-        self.doubleSpinBox.setSingleStep(0.010000000000000)
-        self.doubleSpinBox.setValue(0.500000000000000)
+        self.volumeSpin = QDoubleSpinBox(self.centralwidget)
+        self.volumeSpin.setObjectName(u"volumeSpin")
+        self.volumeSpin.setDecimals(2)
+        self.volumeSpin.setMaximum(1.000000000000000)
+        self.volumeSpin.setSingleStep(0.010000000000000)
+        self.volumeSpin.setValue(1.000000000000000)
 
-        self.horizontalLayout_4.addWidget(self.doubleSpinBox)
+        self.horizontalLayout_4.addWidget(self.volumeSpin)
 
 
         self.volumeLayout.addLayout(self.horizontalLayout_4)
@@ -122,7 +127,7 @@ class Ui_BookWindow(object):
         self.volumeSlider = QSlider(self.centralwidget)
         self.volumeSlider.setObjectName(u"volumeSlider")
         self.volumeSlider.setMaximum(100)
-        self.volumeSlider.setValue(50)
+        self.volumeSlider.setValue(100)
         self.volumeSlider.setOrientation(Qt.Orientation.Horizontal)
 
         self.volumeLayout.addWidget(self.volumeSlider)
@@ -151,6 +156,7 @@ class Ui_BookWindow(object):
         self.speedSpin = QDoubleSpinBox(self.centralwidget)
         self.speedSpin.setObjectName(u"speedSpin")
         self.speedSpin.setDecimals(2)
+        self.speedSpin.setMinimum(0.010000000000000)
         self.speedSpin.setMaximum(3.000000000000000)
         self.speedSpin.setSingleStep(0.100000000000000)
         self.speedSpin.setValue(1.000000000000000)
@@ -162,6 +168,7 @@ class Ui_BookWindow(object):
 
         self.speedSlider = QSlider(self.centralwidget)
         self.speedSlider.setObjectName(u"speedSlider")
+        self.speedSlider.setMinimum(1)
         self.speedSlider.setMaximum(300)
         self.speedSlider.setSliderPosition(100)
         self.speedSlider.setOrientation(Qt.Orientation.Horizontal)
@@ -176,7 +183,11 @@ class Ui_BookWindow(object):
 
         self.ControlsArea.addWidget(self.AudioStart)
 
-        self.ControlsArea.setStretch(0, 1)
+        self.verticalSpacer_2 = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+
+        self.ControlsArea.addItem(self.verticalSpacer_2)
+
+        self.ControlsArea.setStretch(1, 1)
 
         self.horizontalLayout.addLayout(self.ControlsArea)
 
@@ -194,7 +205,7 @@ class Ui_BookWindow(object):
         self.prevPageButton.setText(QCoreApplication.translate("BookWindow", u"Previous Page", None))
         self.nextPageButton.setText(QCoreApplication.translate("BookWindow", u"Next Page", None))
         self.FontEntry.setPrefix(QCoreApplication.translate("BookWindow", u"Font Size: ", None))
-        self.label.setText(QCoreApplication.translate("BookWindow", u"Volume:", None))
+        self.volumeLabel.setText(QCoreApplication.translate("BookWindow", u"Volume:", None))
         self.speedLabel.setText(QCoreApplication.translate("BookWindow", u"Speed:", None))
         self.AudioStart.setText(QCoreApplication.translate("BookWindow", u"Start / Stop Audio", None))
     # retranslateUi

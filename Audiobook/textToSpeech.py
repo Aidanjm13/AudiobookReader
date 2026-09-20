@@ -61,14 +61,15 @@ def _get_kokoro_pipeline(lang_code: str):
     return _kokoro_pipelines[lang_code]
 
 
-def stream_speech_kokoro(text: str, voice: str = "af_heart", lang_code: str = "a"):
+def stream_speech_kokoro(text: str, voice: str = "af_heart", lang_code: str = "a", speed: float = 1.0):
     pipeline = _get_kokoro_pipeline(lang_code)
-    for _, _, audio in pipeline(text, voice=voice):
+    # Pass speed directly to Kokoro's pipeline
+    for _, _, audio in pipeline(text, voice=voice, speed=speed):
         yield audio
 
 
-def synthesize_kokoro(text: str, voice: str = "af_heart", lang_code: str = "a") -> bytes:
-    chunks = list(stream_speech_kokoro(text, voice=voice, lang_code=lang_code))
+def synthesize_kokoro(text: str, voice: str = "af_heart", lang_code: str = "a", speed: float = 1.0) -> bytes:
+    chunks = list(stream_speech_kokoro(text, voice=voice, lang_code=lang_code, speed=speed))
     if not chunks:
         return b""
     audio = np.concatenate(chunks)
@@ -114,12 +115,15 @@ def _get_piper_voice(model_path: str):
     return _piper_voices[model_path]
 
 
-def stream_speech_piper(text: str, model_path: str):
-    """
-    Synthesize text using Piper, yielding 16-bit PCM numpy arrays.
-    """
+def stream_speech_piper(text: str, model_path: str, speed: float = 1.0):
     voice = _get_piper_voice(model_path)
+    
+    # Piper uses length_scale where values < 1.0 make speech faster. 
+    # Example: 1.25 speed slider = 1 / 1.25 = 0.8 length_scale
+    length_scale = 1.0 / speed if speed > 0 else 1.0
 
+    voice.config.length_scale = length_scale
+    
     for chunk in voice.synthesize(text):
         if hasattr(chunk, "audio_int16_array") and chunk.audio_int16_array is not None:
             yield chunk.audio_int16_array
@@ -131,9 +135,9 @@ def stream_speech_piper(text: str, model_path: str):
             yield np.frombuffer(chunk, dtype=np.int16)
 
 
-def synthesize_piper(text: str, model_path: str) -> bytes:
+def synthesize_piper(text: str, model_path: str, speed: float = 1.0) -> bytes:
     voice = _get_piper_voice(model_path)
-    chunks = list(stream_speech_piper(text, model_path))
+    chunks = list(stream_speech_piper(text, model_path, speed=speed))
     if not chunks:
         return b""
     audio = np.concatenate(chunks).astype(np.float32) / 32768.0
@@ -175,6 +179,7 @@ _ENGINE_CONFIG = {
     "piper_model_path": "en_US-lessac-medium.onnx",
     "kokoro_voice": "af_heart",
     "kokoro_lang_code": "a",
+    "speed": 1.0  # Added speed variable to global state
 }
 
 
@@ -184,13 +189,16 @@ def set_active_engine(engine: str, **kwargs):
 
 
 def SynthesizeText(text: str) -> bytes:
+    speed = _ENGINE_CONFIG.get("speed", 1.0)
+    
     if _ENGINE_CONFIG["engine"] == "kokoro":
         return synthesize_kokoro(
             text,
             voice=_ENGINE_CONFIG["kokoro_voice"],
             lang_code=_ENGINE_CONFIG["kokoro_lang_code"],
+            speed=speed
         )
     else:
         piper_model_path = ensure_piper_voice("en", "US", "lessac", "medium")
         _ENGINE_CONFIG["piper_model_path"] = piper_model_path
-        return synthesize_piper(text, _ENGINE_CONFIG["piper_model_path"])
+        return synthesize_piper(text, _ENGINE_CONFIG["piper_model_path"], speed=speed)

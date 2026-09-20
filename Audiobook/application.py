@@ -202,6 +202,20 @@ class BookWindow(QMainWindow):
         self.font_size_timer.timeout.connect(self.change_font_size)
         self.ui.FontEntry.valueChanged.connect(self.schedule_font_size_change)
 
+        # speed timer setup
+        self.speed_timer = QTimer()
+        self.speed_timer.setSingleShot(True)
+        self.speed_timer.timeout.connect(self.change_speed)
+        self.ui.speedSlider.valueChanged.connect(self.speed_slider_change)
+        self.ui.speedSpin.valueChanged.connect(self.speed_spin_change)
+
+        # volume timer setup
+        self.volume_timer = QTimer()
+        self.volume_timer.setSingleShot(True)
+        self.volume_timer.timeout.connect(self.change_volume)
+        self.ui.volumeSlider.valueChanged.connect(self.volume_slider_change)
+        self.ui.volumeSpin.valueChanged.connect(self.volume_spin_change)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
 
@@ -236,9 +250,52 @@ class BookWindow(QMainWindow):
         goPrevPage(self.id, self.ui.TextArea)
         self.renderCurrentPage()
 
+    def speed_spin_change(self):
+        self.speed_timer.start(1000)
+        self.ui.speedSlider.blockSignals(True)
+        self.ui.speedSlider.setValue(int(self.ui.speedSpin.value() * 100))
+        self.ui.speedSlider.blockSignals(False)
+
+    def speed_slider_change(self):
+        self.speed_timer.start(1000)
+        self.ui.speedSpin.blockSignals(True)
+        self.ui.speedSpin.setValue(round((self.ui.speedSlider.value() / 100), 2))
+        self.ui.speedSpin.blockSignals(False)
+
+    def change_speed(self):
+        speed_float = self.ui.speedSpin.value()
+        
+        from textToSpeech import _ENGINE_CONFIG
+        _ENGINE_CONFIG["speed"] = speed_float
+
+        # If audio is playing (or was paused mid-stream), restart it seamlessly from the current sentence
+        if self.audioState in (0, 1):
+            page_to_resume = self._pending_page
+            item_to_resume = self._current_playing_item_index
+            self._queue_page_audio(page_to_resume, start_item_index=item_to_resume)
+
+    def volume_spin_change(self):
+            self.volume_timer.start(100)
+            self.ui.volumeSlider.blockSignals(True)
+            self.ui.volumeSlider.setValue(int(self.ui.volumeSpin.value() * 100))
+            self.ui.volumeSlider.blockSignals(False)
+    
+    def volume_slider_change(self):
+        self.volume_timer.start(100)
+        self.ui.volumeSpin.blockSignals(True)
+        self.ui.volumeSpin.setValue(round((self.ui.volumeSlider.value() / 100), 2))
+        self.ui.volumeSpin.blockSignals(False)
+
+    def change_volume(self):
+        volume_float = self.ui.volumeSpin.value()
+        
+        # Applies smoothly in real-time, no audio restart required
+        if self.sink is not None:
+            self.sink.setVolume(volume_float)
+
     def schedule_font_size_change(self):
         self.stop_audio()
-        self.font_size_timer.start(500)
+        self.font_size_timer.start(1000)
 
     def change_font_size(self):
         self.stop_audio()
@@ -269,13 +326,12 @@ class BookWindow(QMainWindow):
         self.tts_worker.clear_queue(self.id)
 
     # --- Item Streaming & Queue Handling ---
-    def _queue_page_audio(self, page):
+    def _queue_page_audio(self, page, start_item_index=0):
         self.stop_audio()
         self.audioState = 1
         self._pending_page = page
         tts_set_page(self.id, page)
 
-        # Create fresh buffer explicitly for this playback session
         self.audio_buffer = StreamingAudioBuffer(sample_rate=self.active_sample_rate, channels=self.active_channels)
         self.audio_buffer.page_finished.connect(self.on_audio_page_finished)
         self.audio_buffer.clip_started.connect(self.on_clip_started)
@@ -297,7 +353,13 @@ class BookWindow(QMainWindow):
         last_index = self._current_page_items[-1][0]
         self.audio_buffer.set_page_boundary(page=page, last_item_index=last_index)
 
+        # Fast-forward queue cursor to the requested start sentence (used by speed changes)
         self._queue_cursor = 0
+        for i, (idx, text) in enumerate(self._current_page_items):
+            if idx >= start_item_index:
+                self._queue_cursor = i
+                break
+
         self._queue_next_items(count=2)
 
     def _queue_next_items(self, count=1):
@@ -317,21 +379,22 @@ class BookWindow(QMainWindow):
             self._queue_next_items(count=1)
 
     def _on_item_synthesized(self, book_id: int, page_index: int, item_index: int, pcm_bytes: bytes, generation: int):
-        # Reject stale chunks from previous playback sessions
         if book_id != self.id or page_index != self._pending_page or generation != self._play_generation:
             return
 
-        # Must have an active buffer to feed
         if not self.audio_buffer:
             return
 
         clip_id = f"{book_id}-{page_index}-{item_index}"
         self.audio_buffer.feed(clip_id, pcm_bytes, item_index, page_index)
 
-        # Create and bind the hardware stream the first time a chunk arrives for this session
+        # Apply current volume when sink spins up
         if self.audioState == 1 and self.sink is None:
             self.sink = QAudioSink(self.device, self.audio_fmt)
-            self.sink.setVolume(1.0)
+            if hasattr(self.ui, 'VolumeSlider'):
+                self.sink.setVolume(self.ui.VolumeSlider.value() / 100.0)
+            else:
+                self.sink.setVolume(1.0)
             self.sink.stateChanged.connect(self._on_audio_state_changed)
             self.sink.start(self.audio_buffer)
 
@@ -362,7 +425,8 @@ class BookWindow(QMainWindow):
             self._queue_page_audio(page + 1)
 
     def on_clip_started(self, clip_id, item_index):
-        pass
+        # Track exactly which sentence is currently outputting to the speakers
+        self._current_playing_item_index = item_index
 
     def on_clip_finished(self, clip_id, item_index):
         pass
