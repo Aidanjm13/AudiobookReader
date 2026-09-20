@@ -87,6 +87,13 @@ class Ui_BookWindow(object):
 
         self.ControlsArea.addWidget(self.FontEntry)
 
+        self.volume = QDoubleSpinBox(self.centralwidget)
+        self.volume.setObjectName(u"volume")
+        self.volume.setSingleStep(0.100000000000000)
+        self.volume.setValue(1.000000000000000)
+
+        self.ControlsArea.addWidget(self.volume)
+
         self.AudioStart = QPushButton(self.centralwidget)
         self.AudioStart.setObjectName(u"AudioStart")
 
