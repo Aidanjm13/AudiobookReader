@@ -8,9 +8,9 @@ from ui_BookWindow import Ui_BookWindow
 from fileHandling import saveNewBook
 from SQLHandler import init_db, add_book, get_books_by_accessed, get_book, update_book
 from pathlib import Path
-from epubReader import getBook, getLanguages, getCreators, getTitles, save_cover_image, renderItemsIntoTextEdit
+from epubReader import getBook, getLanguages, getCreators, getTitles, save_cover_image, renderItemsIntoTextEdit, getSectionTitles
 import os
-from bookPages import buildPages, getCurrentPageItems, goNextPage, goPrevPage, getCurrentPage, closeBook
+from bookPages import buildPages, getCurrentPageItems, goNextPage, goPrevPage, loadChapterStart, getCurrentPage, closeBook
 from ttsWorker import get_tts_worker, tts_set_page
 from textToSpeech import set_audio_format
 
@@ -191,6 +191,7 @@ class BookWindow(QMainWindow):
         self._play_generation = 0
 
         QTimer.singleShot(0, self._loadInitialPage)
+        QTimer.singleShot(0, self.loadChapterSelect)
 
         self.ui.nextPageButton.clicked.connect(lambda: self.goNext(True))
         self.ui.prevPageButton.clicked.connect(lambda: self.goPrevious(True))
@@ -227,6 +228,32 @@ class BookWindow(QMainWindow):
         except (RuntimeError, TypeError):
             pass
         closeBook(self.id)
+
+    def loadChapterSelect(self):
+        chapters = getSectionTitles(self.book)
+        if(chapters[0] is None): chapters[0] = "Cover"
+        for i in range(1,len(chapters)):
+            if(chapters[i] is None): chapters[i] = f"Chapter {i}"
+        
+        self.ui.chapterList.clear()
+        
+        self.ui.chapterList.addItems(chapters)
+        
+        try:
+            self.ui.chapterList.itemClicked.disconnect()
+        except TypeError:
+            pass 
+            
+        self.ui.chapterList.itemClicked.connect(self.handle_chapter_click)
+
+    def handle_chapter_click(self, item):
+        self.stop_audio()
+        chapterNum = self.ui.chapterList.row(item) # Gets the index (0, 1, 2...)
+        chapterTitle = item.text()                 # Gets the text
+        
+        print(f"Loading chapter {chapterNum}: {chapterTitle}")
+        loadChapterStart(self.id, self.ui.TextArea, chapterNum)
+        self.renderCurrentPage()
 
     def _loadInitialPage(self):
         buildPages(self.id, self.ui.TextArea)

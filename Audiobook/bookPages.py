@@ -178,6 +178,15 @@ def goPrevPage(book_id, textArea):
     saveProgress(book_id)
     setTTSWorkerPage(book_id)
 
+#moves to the start of the chapter
+def loadChapterStart(book_id, textArea, chapterNum):
+    bookPages = get_book_pages()
+    bookPages.set_position(book_id, chapterNum, 0)
+    buildPages(book_id, textArea)
+    bookPages.set_page(book_id, 0)
+    saveProgress(book_id)
+    setTTSWorkerPage(book_id)
+
 
 def saveProgress(book_id):
     bookpages = get_book_pages()

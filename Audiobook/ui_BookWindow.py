@@ -16,15 +16,15 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QApplication, QDoubleSpinBox, QHBoxLayout, QLabel,
-    QLayout, QMainWindow, QPushButton, QSizePolicy,
-    QSlider, QSpacerItem, QTextEdit, QVBoxLayout,
-    QWidget)
+    QLayout, QListWidget, QListWidgetItem, QMainWindow,
+    QPushButton, QSizePolicy, QSlider, QSpacerItem,
+    QTextEdit, QVBoxLayout, QWidget)
 
 class Ui_BookWindow(object):
     def setupUi(self, BookWindow):
         if not BookWindow.objectName():
             BookWindow.setObjectName(u"BookWindow")
-        BookWindow.resize(836, 848)
+        BookWindow.resize(850, 852)
         self.centralwidget = QWidget(BookWindow)
         self.centralwidget.setObjectName(u"centralwidget")
         self.horizontalLayout = QHBoxLayout(self.centralwidget)
@@ -83,6 +83,17 @@ class Ui_BookWindow(object):
         self.ControlsArea.setObjectName(u"ControlsArea")
         self.ControlsArea.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         self.ControlsArea.setContentsMargins(-1, 0, -1, 0)
+        self.chapterList = QListWidget(self.centralwidget)
+        self.chapterList.setObjectName(u"chapterList")
+        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        sizePolicy2.setHorizontalStretch(0)
+        sizePolicy2.setVerticalStretch(0)
+        sizePolicy2.setHeightForWidth(self.chapterList.sizePolicy().hasHeightForWidth())
+        self.chapterList.setSizePolicy(sizePolicy2)
+        self.chapterList.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.ControlsArea.addWidget(self.chapterList)
+
         self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
         self.ControlsArea.addItem(self.verticalSpacer)
@@ -104,11 +115,11 @@ class Ui_BookWindow(object):
         self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
         self.volumeLabel = QLabel(self.centralwidget)
         self.volumeLabel.setObjectName(u"volumeLabel")
-        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-        sizePolicy2.setHorizontalStretch(0)
-        sizePolicy2.setVerticalStretch(0)
-        sizePolicy2.setHeightForWidth(self.volumeLabel.sizePolicy().hasHeightForWidth())
-        self.volumeLabel.setSizePolicy(sizePolicy2)
+        sizePolicy3 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        sizePolicy3.setHorizontalStretch(0)
+        sizePolicy3.setVerticalStretch(0)
+        sizePolicy3.setHeightForWidth(self.volumeLabel.sizePolicy().hasHeightForWidth())
+        self.volumeLabel.setSizePolicy(sizePolicy3)
 
         self.horizontalLayout_4.addWidget(self.volumeLabel)
 
@@ -145,11 +156,11 @@ class Ui_BookWindow(object):
         self.horizontalLayout_3.setContentsMargins(-1, -1, 0, -1)
         self.speedLabel = QLabel(self.centralwidget)
         self.speedLabel.setObjectName(u"speedLabel")
-        sizePolicy3 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Maximum)
-        sizePolicy3.setHorizontalStretch(0)
-        sizePolicy3.setVerticalStretch(0)
-        sizePolicy3.setHeightForWidth(self.speedLabel.sizePolicy().hasHeightForWidth())
-        self.speedLabel.setSizePolicy(sizePolicy3)
+        sizePolicy4 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Maximum)
+        sizePolicy4.setHorizontalStretch(0)
+        sizePolicy4.setVerticalStretch(0)
+        sizePolicy4.setHeightForWidth(self.speedLabel.sizePolicy().hasHeightForWidth())
+        self.speedLabel.setSizePolicy(sizePolicy4)
 
         self.horizontalLayout_3.addWidget(self.speedLabel)
 
@@ -187,7 +198,7 @@ class Ui_BookWindow(object):
 
         self.ControlsArea.addItem(self.verticalSpacer_2)
 
-        self.ControlsArea.setStretch(1, 1)
+        self.ControlsArea.setStretch(2, 1)
 
         self.horizontalLayout.addLayout(self.ControlsArea)
 
