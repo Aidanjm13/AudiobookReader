@@ -6,7 +6,7 @@ from AudioBuffer import SAMPLE_RATE, StreamingAudioBuffer
 from ui_Audiobook import Ui_MainWindow
 from ui_BookWindow import Ui_BookWindow
 from fileHandling import saveNewBook
-from SQLHandler import init_db, add_book, get_books_by_accessed, get_book, update_book
+from SQLHandler import init_db, add_book, get_books_by_accessed, get_book, update_book, add_settings, num_settings, get_active_setting, update_settings
 from pathlib import Path
 from epubReader import getBook, getLanguages, getCreators, getTitles, save_cover_image, renderItemsIntoTextEdit, getSectionTitles
 import os
@@ -35,6 +35,8 @@ class MainWindow(QMainWindow):
         self.setup_books_area()
         self.load_books()
         self.openBookWindows = []
+        if(num_settings() == 0):
+            add_settings("Default", 1.0, 1.0, "default", 16, "default", True)
 
     def on_upload_clicked(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -151,10 +153,16 @@ class BookWindow(QMainWindow):
         self.ui.setupUi(self)
         self.id = book_id
         self.databaseBook = get_book(book_id)
+        self.settings = get_active_setting()
         self.book = getBook(self.databaseBook.file_path)
         self.fileType = self.databaseBook.file_type
         self.section = self.databaseBook.chapter
         self.sentence = self.databaseBook.sentence
+
+        #updating font size before text is set
+        font = self.ui.TextArea.font()
+        font.setPointSizeF(self.settings.font_size)
+        self.ui.TextArea.setFont(font)
 
         # Audio format configuration
         self.device = QMediaDevices.defaultAudioOutput()
@@ -198,6 +206,7 @@ class BookWindow(QMainWindow):
         self.ui.AudioStart.clicked.connect(self.toggle_audio)
 
         # Font timer setup
+        self.ui.FontEntry.setValue(self.settings.font_size)
         self.font_size_timer = QTimer()
         self.font_size_timer.setSingleShot(True)
         self.font_size_timer.timeout.connect(self.change_font_size)
@@ -216,6 +225,13 @@ class BookWindow(QMainWindow):
         self.volume_timer.timeout.connect(self.change_volume)
         self.ui.volumeSlider.valueChanged.connect(self.volume_slider_change)
         self.ui.volumeSpin.valueChanged.connect(self.volume_spin_change)
+
+        #update values with current settings
+        self.ui.volumeSpin.setValue(self.settings.volume)
+        self.ui.speedSpin.setValue(self.settings.speed)
+
+
+    
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -291,7 +307,7 @@ class BookWindow(QMainWindow):
 
     def change_speed(self):
         speed_float = self.ui.speedSpin.value()
-        
+        update_settings(self.settings.id, speed=speed_float)
         from textToSpeech import _ENGINE_CONFIG
         _ENGINE_CONFIG["speed"] = speed_float
 
@@ -302,10 +318,10 @@ class BookWindow(QMainWindow):
             self._queue_page_audio(page_to_resume, start_item_index=item_to_resume)
 
     def volume_spin_change(self):
-            self.volume_timer.start(100)
-            self.ui.volumeSlider.blockSignals(True)
-            self.ui.volumeSlider.setValue(int(self.ui.volumeSpin.value() * 100))
-            self.ui.volumeSlider.blockSignals(False)
+        self.volume_timer.start(100)
+        self.ui.volumeSlider.blockSignals(True)
+        self.ui.volumeSlider.setValue(int(self.ui.volumeSpin.value() * 100))
+        self.ui.volumeSlider.blockSignals(False)
     
     def volume_slider_change(self):
         self.volume_timer.start(100)
@@ -315,6 +331,7 @@ class BookWindow(QMainWindow):
 
     def change_volume(self):
         volume_float = self.ui.volumeSpin.value()
+        update_settings(self.settings.id, volume=volume_float)
         
         # Applies smoothly in real-time, no audio restart required
         if self.sink is not None:
@@ -327,6 +344,7 @@ class BookWindow(QMainWindow):
     def change_font_size(self):
         self.stop_audio()
         fontSize = self.ui.FontEntry.value()
+        update_settings(self.settings.id, font_size=fontSize)
         font = self.ui.TextArea.font()
         font.setPointSizeF(fontSize)
         self.ui.TextArea.setFont(font)

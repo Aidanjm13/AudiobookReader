@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, ForeignKey, String, Integer, DateTime
+from sqlalchemy import create_engine, ForeignKey, String, Integer, Float, Boolean, DateTime
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column, relationship, sessionmaker
 from datetime import datetime
 from typing import List, Optional
@@ -37,11 +37,13 @@ class Settings(Base):
     __tablename__ = "settings"
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=False, index=True) #name of the preset
-    speed: Mapped[int] = mapped_column(Integer, unique=False) #speed of the audiobook reading
-    voice: Mapped[str] = mapped_column(String(100), unique=False, index=True) #name of the audiobook voice
+    name: Mapped[str] = mapped_column(String(100), unique=False) #name of the preset
+    speed: Mapped[float] = mapped_column(Float, unique=False) #speed of the audiobook reading: 0-3
+    volume: Mapped[float] = mapped_column(Float, unique=False) #volume of the audiobook reading: 0-1
+    voice: Mapped[str] = mapped_column(String(100), unique=False) #name of the audiobook voice
     font_size: Mapped[int] = mapped_column(Integer, unique=False) #size of the text
-    font_style: Mapped[str] = mapped_column(String(100), unique=False, index=True) #name of the text font
+    font_style: Mapped[str] = mapped_column(String(100), unique=False) #name of the text font
+    active: Mapped[bool] = mapped_column(Boolean, unique=False)
 
 #creates database tables if needed
 def init_db():
@@ -100,14 +102,16 @@ def delete_book(book_id):
         session.commit()
 
 #insert row in settings table
-def add_settings(name, speed, voice, font_size, font_style):
+def add_settings(name, speed, volume, voice, font_size, font_style, active):
     with Session() as session:
         settings = Settings(
             name=name,
             speed=speed,
             voice=voice,
+            volume=volume,
             font_size=font_size,
             font_style=font_style,
+            active=active
         )
         session.add(settings)
         session.commit()
@@ -126,14 +130,41 @@ def get_book(book_id):
     with Session() as session:
         return session.get(Book, book_id)
 
+#returns a list of book ids, titles, book path, and cover image path for the library
+def get_books_by_accessed():
+    with Session() as session:
+        books = session.query(Book).order_by(Book.last_accessed.desc()).all()
+        return [{"id": book.id, "title": book.title, "path": book.file_path, "cover": book.image_path} for book in books]
+
+
 
 def get_settings(settings_id):
     """Fetch a single Settings preset by id. Returns None if not found."""
     with Session() as session:
         return session.get(Settings, settings_id)
 
-#returns a list of book ids, titles, book path, and cover image path for the library
-def get_books_by_accessed():
+def num_settings():
+    """Return the total number of Settings presets."""
     with Session() as session:
-        books = session.query(Book).order_by(Book.last_accessed.desc()).all()
-        return [{"id": book.id, "title": book.title, "path": book.file_path, "cover": book.image_path} for book in books]
+        return session.query(Settings).count()
+
+def get_active_setting():
+    """Fetch the currently active Settings preset. Returns None if not found."""
+    with Session() as session:
+        return session.query(Settings).filter_by(active=True).first()
+
+def update_settings(book_id, **fields):
+    """
+    Update fields on an existing Settings row.
+    Usage: update_settings(3, speed=1.5, volume=0.8)
+    """
+    with Session() as session:
+        settings = session.get(Settings, book_id)
+        if settings is None:
+            raise ValueError(f"No settings with id {book_id}")
+
+        for key, value in fields.items():
+            setattr(settings, key, value)
+
+        session.commit()
+
