@@ -17,6 +17,7 @@ import wave
 from pathlib import Path
 import numpy as np
 from fileHandling import getAppdataFolderPath
+from piperVoices import parsePiperVoiceString
 
 TARGET_SAMPLE_RATE = 48000  # Default standard output sample rate
 TARGET_CHANNELS = 2
@@ -173,15 +174,13 @@ def _float_to_int16_bytes(audio: np.ndarray, channels: int = None) -> bytes:
         
     return pcm16.tobytes()
 
-
+#kokoro model : languageCode_voiceModel
+#piper model : language_region_name_pitch
 _ENGINE_CONFIG = {
     "engine": "piper",
-    "piper_model_path": "en_US-lessac-medium.onnx",
-    "kokoro_voice": "af_heart",
-    "kokoro_lang_code": "a",
+    "model": "en_US-lessac-medium", #separate parts of model by underscores to be split
     "speed": 1.0  # Added speed variable to global state
 }
-
 
 def set_active_engine(engine: str, **kwargs):
     _ENGINE_CONFIG["engine"] = engine
@@ -191,14 +190,16 @@ def set_active_engine(engine: str, **kwargs):
 def SynthesizeText(text: str) -> bytes:
     speed = _ENGINE_CONFIG.get("speed", 1.0)
     
-    if _ENGINE_CONFIG["engine"] == "kokoro":
+    if _ENGINE_CONFIG.get("engine", "piper") == "kokoro":
+        modelParts = _ENGINE_CONFIG.get("model", "af_heart").split("_")
         return synthesize_kokoro(
             text,
-            voice=_ENGINE_CONFIG["kokoro_voice"],
-            lang_code=_ENGINE_CONFIG["kokoro_lang_code"],
+            voice=modelParts[1],
+            lang_code=modelParts[0],
             speed=speed
         )
     else:
-        piper_model_path = ensure_piper_voice("en", "US", "lessac", "medium")
+        lang, region, speaker, quality = parsePiperVoiceString(_ENGINE_CONFIG.get("model", "en_US-lessac-medium"))
+        piper_model_path = ensure_piper_voice(lang, region, speaker, quality)
         _ENGINE_CONFIG["piper_model_path"] = piper_model_path
         return synthesize_piper(text, _ENGINE_CONFIG["piper_model_path"], speed=speed)

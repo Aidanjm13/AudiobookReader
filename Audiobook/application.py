@@ -36,7 +36,7 @@ class MainWindow(QMainWindow):
         self.load_books()
         self.openBookWindows = []
         if(num_settings() == 0):
-            add_settings("Default", 1.0, 1.0, "default", 16, "default", True)
+            add_settings("Default", 1.0, 1.0, "piper", "en_US-lessac-medium", 16, "default", True)
 
     def on_upload_clicked(self):
         file_path, _ = QFileDialog.getOpenFileName(

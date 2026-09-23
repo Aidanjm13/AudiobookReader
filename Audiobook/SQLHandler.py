@@ -40,7 +40,8 @@ class Settings(Base):
     name: Mapped[str] = mapped_column(String(100), unique=False) #name of the preset
     speed: Mapped[float] = mapped_column(Float, unique=False) #speed of the audiobook reading: 0-3
     volume: Mapped[float] = mapped_column(Float, unique=False) #volume of the audiobook reading: 0-1
-    voice: Mapped[str] = mapped_column(String(100), unique=False) #name of the audiobook voice
+    voice_engine: Mapped[str] = mapped_column(String(100), unique=False) #the engine for the model
+    voice_model: Mapped[str] = mapped_column(String(100), unique=False) #name of the audiobook voice
     font_size: Mapped[int] = mapped_column(Integer, unique=False) #size of the text
     font_style: Mapped[str] = mapped_column(String(100), unique=False) #name of the text font
     active: Mapped[bool] = mapped_column(Boolean, unique=False)
@@ -102,12 +103,13 @@ def delete_book(book_id):
         session.commit()
 
 #insert row in settings table
-def add_settings(name, speed, volume, voice, font_size, font_style, active):
+def add_settings(name, speed, volume, voice_engine, voice_model, font_size, font_style, active):
     with Session() as session:
         settings = Settings(
             name=name,
             speed=speed,
-            voice=voice,
+            voice_engine=voice_engine,
+            voice_model=voice_model,
             volume=volume,
             font_size=font_size,
             font_style=font_style,
