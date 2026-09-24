@@ -15,10 +15,10 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QDoubleSpinBox, QHBoxLayout, QLabel,
-    QLayout, QListWidget, QListWidgetItem, QMainWindow,
-    QPushButton, QSizePolicy, QSlider, QSpacerItem,
-    QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout,
+    QLabel, QLayout, QListWidget, QListWidgetItem,
+    QMainWindow, QPushButton, QSizePolicy, QSlider,
+    QSpacerItem, QTextEdit, QVBoxLayout, QWidget)
 
 class Ui_BookWindow(object):
     def setupUi(self, BookWindow):
@@ -105,6 +105,11 @@ class Ui_BookWindow(object):
         self.FontEntry.setValue(16.000000000000000)
 
         self.ControlsArea.addWidget(self.FontEntry)
+
+        self.VoiceSelect = QComboBox(self.centralwidget)
+        self.VoiceSelect.setObjectName(u"VoiceSelect")
+
+        self.ControlsArea.addWidget(self.VoiceSelect)
 
         self.volumeLayout = QVBoxLayout()
         self.volumeLayout.setSpacing(0)

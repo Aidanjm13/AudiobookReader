@@ -15,8 +15,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMainWindow, QPushButton,
-    QScrollArea, QSizePolicy, QTabWidget, QVBoxLayout,
+from PySide6.QtWidgets import (QApplication, QComboBox, QHBoxLayout, QLabel,
+    QLayout, QMainWindow, QPushButton, QScrollArea,
+    QSizePolicy, QSpacerItem, QTabWidget, QVBoxLayout,
     QWidget)
 
 class Ui_MainWindow(object):
@@ -77,6 +78,63 @@ class Ui_MainWindow(object):
         self.Settings.setObjectName(u"Settings")
         self.horizontalLayout = QHBoxLayout(self.Settings)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
+        self.SettingsColumn1 = QVBoxLayout()
+        self.SettingsColumn1.setObjectName(u"SettingsColumn1")
+        self.horizontalLayout_3 = QHBoxLayout()
+        self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
+        self.horizontalLayout_3.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        self.label = QLabel(self.Settings)
+        self.label.setObjectName(u"label")
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label.sizePolicy().hasHeightForWidth())
+        self.label.setSizePolicy(sizePolicy)
+        self.label.setMaximumSize(QSize(16777215, 16777215))
+
+        self.horizontalLayout_3.addWidget(self.label)
+
+        self.comboBox = QComboBox(self.Settings)
+        self.comboBox.setObjectName(u"comboBox")
+        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        sizePolicy1.setHorizontalStretch(0)
+        sizePolicy1.setVerticalStretch(0)
+        sizePolicy1.setHeightForWidth(self.comboBox.sizePolicy().hasHeightForWidth())
+        self.comboBox.setSizePolicy(sizePolicy1)
+        self.comboBox.setInsertPolicy(QComboBox.InsertPolicy.InsertAfterCurrent)
+
+        self.horizontalLayout_3.addWidget(self.comboBox)
+
+        self.verticalLayout = QVBoxLayout()
+        self.verticalLayout.setSpacing(0)
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.RefreshVoiceButton = QPushButton(self.Settings)
+        self.RefreshVoiceButton.setObjectName(u"RefreshVoiceButton")
+
+        self.verticalLayout.addWidget(self.RefreshVoiceButton)
+
+        self.DownloadDeleteVoiceButton = QPushButton(self.Settings)
+        self.DownloadDeleteVoiceButton.setObjectName(u"DownloadDeleteVoiceButton")
+
+        self.verticalLayout.addWidget(self.DownloadDeleteVoiceButton)
+
+
+        self.horizontalLayout_3.addLayout(self.verticalLayout)
+
+
+        self.SettingsColumn1.addLayout(self.horizontalLayout_3)
+
+        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+
+        self.SettingsColumn1.addItem(self.verticalSpacer)
+
+
+        self.horizontalLayout.addLayout(self.SettingsColumn1)
+
+        self.horizontalSpacer = QSpacerItem(90, 20, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout.addItem(self.horizontalSpacer)
+
         self.tabWidget.addTab(self.Settings, "")
 
         self.horizontalLayout_2.addWidget(self.tabWidget)
@@ -95,6 +153,9 @@ class Ui_MainWindow(object):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"AudiobookLibrary", None))
         self.uploadFilesButton.setText(QCoreApplication.translate("MainWindow", u"Upload Files", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.Books), QCoreApplication.translate("MainWindow", u"Books", None))
+        self.label.setText(QCoreApplication.translate("MainWindow", u"Voice Download:", None))
+        self.RefreshVoiceButton.setText(QCoreApplication.translate("MainWindow", u"Refresh Options", None))
+        self.DownloadDeleteVoiceButton.setText(QCoreApplication.translate("MainWindow", u"Download/Delete", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.Settings), QCoreApplication.translate("MainWindow", u"Settings", None))
     # retranslateUi
 

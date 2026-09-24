@@ -92,7 +92,7 @@
      </layout>
     </item>
     <item>
-     <layout class="QVBoxLayout" name="ControlsArea" stretch="0,0,1,0,0,0,0">
+     <layout class="QVBoxLayout" name="ControlsArea" stretch="0,0,1,0,0,0,0,0">
       <property name="spacing">
        <number>13</number>
       </property>
@@ -146,6 +146,9 @@
          <double>16.000000000000000</double>
         </property>
        </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="VoiceSelect"/>
       </item>
       <item>
        <layout class="QVBoxLayout" name="volumeLayout">

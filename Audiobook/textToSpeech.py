@@ -203,3 +203,28 @@ def SynthesizeText(text: str) -> bytes:
         piper_model_path = ensure_piper_voice(lang, region, speaker, quality)
         _ENGINE_CONFIG["piper_model_path"] = piper_model_path
         return synthesize_piper(text, _ENGINE_CONFIG["piper_model_path"], speed=speed)
+
+def scan_downloaded_voices() -> dict:
+    """
+    Scans the voices directory ONCE and returns a dictionary mapping 
+    the voice string to its file size in MB.
+    Example return: {'en_US-amy-low': 15.4, 'ar_JO-naomi-medium': 45.2}
+    """
+    downloaded = {}
+    if not os.path.exists(VOICES_DIR):
+        return downloaded
+
+    # os.scandir is faster than os.listdir because it fetches metadata (like size) 
+    # at the same time it fetches the filenames.
+    with os.scandir(VOICES_DIR) as entries:
+        for entry in entries:
+            if entry.is_file() and entry.name.endswith(".onnx"):
+                voice_str = entry.name[:-5] # Strip off the '.onnx'
+                
+                # Verify the config json also exists
+                json_path = os.path.join(VOICES_DIR, f"{voice_str}.onnx.json")
+                if os.path.exists(json_path):
+                    size_mb = entry.stat().st_size / (1024 * 1024)
+                    downloaded[voice_str] = size_mb
+                    
+    return downloaded
