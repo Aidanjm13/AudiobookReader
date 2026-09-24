@@ -39,27 +39,27 @@ jobs:
     - name: Build with PyInstaller (Windows)
       if: runner.os == 'Windows'
       # --windowed hides the console prompt for your GUI app
-      run: pyinstaller --windowed --name audiobook-app-windows main.py
+      run: pyinstaller --windowed --name AudiobookReader-windows application.py
 
     - name: Zip the Windows Build
       if: runner.os == 'Windows'
-      run: Compress-Archive -Path dist/audiobook-app-windows/* -DestinationPath dist/audiobook-app-windows.zip
+      run: Compress-Archive -Path dist/AudiobookReader-windows/* -DestinationPath dist/AudiobookReader-windows.zip
 
     - name: Build with PyInstaller (Linux)
       if: runner.os == 'Linux'
-      run: pyinstaller --windowed --name audiobook-app-linux main.py
+      run: pyinstaller --windowed --name AudiobookReader-linux application.py
 
     - name: Zip the Linux Build
       if: runner.os == 'Linux'
       run: |
         cd dist
-        zip -r audiobook-app-linux.zip audiobook-app-linux/
+        zip -r AudiobookReader-linux.zip AudiobookReader-linux/
 
     - name: Upload to GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          dist/audiobook-app-windows.zip
-          dist/audiobook-app-linux.zip
+          dist/AudiobookReader-windows.zip
+          dist/AudiobookReader-linux.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
