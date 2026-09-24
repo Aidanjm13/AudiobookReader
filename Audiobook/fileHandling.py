@@ -1,6 +1,4 @@
 import os
-import json
-from datetime import datetime
 
 def getAppdataFolderPath():
     appdata = os.getenv('LOCALAPPDATA')

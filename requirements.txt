@@ -1,0 +1,13 @@
+cssselect==1.2.0
+ebooklib==0.20
+kokoro-onnx
+lxml==6.1.1
+numpy==2.5.3
+piper_tts==1.4.2
+pysbd==0.3.4
+PySide6==6.9.1
+PySide6_Addons==6.9.1
+PySide6_Essentials==6.9.1
+requests==2.34.2
+SQLAlchemy==2.0.39
+tinycss2==1.5.1

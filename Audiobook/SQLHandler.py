@@ -1,7 +1,6 @@
-from sqlalchemy import create_engine, ForeignKey, String, Integer, Float, Boolean, DateTime
+from sqlalchemy import create_engine, String, Integer, Float, Boolean
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column, relationship, sessionmaker
 from datetime import datetime
-from typing import List, Optional
 from fileHandling import getAppdataFolderPath
 import os
 

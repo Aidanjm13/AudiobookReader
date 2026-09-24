@@ -2,7 +2,7 @@
 Local TTS functions using Kokoro and Piper.
 
 Install:
-    pip install kokoro soundfile          # for Kokoro
+    pip install kokoro-onnx soundfile          # for Kokoro
     pip install piper-tts                 # for Piper
 
 Piper also needs a voice model (.onnx + .onnx.json), downloadable from:
@@ -10,14 +10,12 @@ Piper also needs a voice model (.onnx + .onnx.json), downloadable from:
 e.g. en_US-lessac-medium.onnx
 """
 
-import io
 import os
 import urllib.request
-import wave
-from pathlib import Path
 import numpy as np
 from fileHandling import getAppdataFolderPath
 from piperVoices import parsePiperVoiceString, loadVoices, refreshPiperVoicesJSON, getPiperVoicePaths
+
 
 TARGET_SAMPLE_RATE = 48000  # Default standard output sample rate
 TARGET_CHANNELS = 2
@@ -39,9 +37,9 @@ KOKORO_LANGUAGES = {
     "f": "French",
     "h": "Hindi",
     "i": "Italian",
-    "j": "Japanese",       # requires: pip install misaki[ja]
+    "j": "Japanese",
     "p": "Brazilian Portuguese",
-    "z": "Mandarin Chinese",  # requires: pip install misaki[zh]
+    "z": "Mandarin Chinese",
 }
 
 KOKORO_VOICES = {
@@ -51,28 +49,50 @@ KOKORO_VOICES = {
     "z": ["zf_xiaobei", "zm_yunxi"],
 }
 
-KOKORO_SAMPLE_RATE = 48000
-_kokoro_pipelines = {}
+KOKORO_SAMPLE_RATE = 24000 
+_kokoro_session = None
 
 
 def _get_kokoro_pipeline(lang_code: str):
-    from kokoro import KPipeline
-    if lang_code not in _kokoro_pipelines:
-        _kokoro_pipelines[lang_code] = KPipeline(lang_code=lang_code)
-    return _kokoro_pipelines[lang_code]
+    global _kokoro_session
+    if _kokoro_session is None:
+        from kokoro_onnx import Kokoro
+        
+        # Store Kokoro models in the appdata folder alongside Piper voices
+        kokoro_dir = os.path.join(getAppdataFolderPath(), "kokoro")
+        os.makedirs(kokoro_dir, exist_ok=True)
+        
+        model_path = os.path.join(kokoro_dir, "kokoro-v0_19.onnx")
+        voices_path = os.path.join(kokoro_dir, "voices.json")
+        
+        # Automatically download the required ONNX files if missing
+        if not os.path.exists(model_path):
+            print("Downloading Kokoro ONNX model...")
+            urllib.request.urlretrieve("https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v0_19.onnx", model_path)
+        if not os.path.exists(voices_path):
+            print("Downloading Kokoro voices.json...")
+            urllib.request.urlretrieve("https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices.json", voices_path)
+            
+        _kokoro_session = Kokoro(model_path, voices_path)
+        
+    return _kokoro_session
 
 
 def stream_speech_kokoro(text: str, voice: str = "af_heart", lang_code: str = "a", speed: float = 1.0):
     pipeline = _get_kokoro_pipeline(lang_code)
-    # Pass speed directly to Kokoro's pipeline
-    for _, _, audio in pipeline(text, voice=voice, speed=speed):
-        yield audio
+    
+    # kokoro-onnx has a create_stream generator that outputs (samples, sample_rate)
+    # We only yield the float samples to match the existing numpy array integration
+    stream = pipeline.create_stream(text, voice=voice, speed=speed, lang=lang_code)
+    for samples, sample_rate in stream:
+        yield samples
 
 
 def synthesize_kokoro(text: str, voice: str = "af_heart", lang_code: str = "a", speed: float = 1.0) -> bytes:
     chunks = list(stream_speech_kokoro(text, voice=voice, lang_code=lang_code, speed=speed))
     if not chunks:
         return b""
+        
     audio = np.concatenate(chunks)
     audio = _resample_float(audio, KOKORO_SAMPLE_RATE, TARGET_SAMPLE_RATE)
     return _float_to_int16_bytes(audio)
