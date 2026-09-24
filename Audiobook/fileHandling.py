@@ -1,11 +1,16 @@
 import os
+import sys
 
 def getAppdataFolderPath():
-    appdata = os.getenv('LOCALAPPDATA')
-    company = "Aidanjm13"
-    app_name = "AudiobookReader"
-    folder_path = os.path.join(appdata, company, app_name)
-    return folder_path
+    if sys.platform == "win32":
+        # Windows path
+        base_path = os.environ.get("APPDATA")
+    else:
+        # Linux / Mac path
+        base_path = os.path.expanduser("~/.local/share")
+        
+    # Ensure this matches whatever folder name you were originally using
+    return os.path.join(base_path, "AudiobookReader")
 
 def getBooksFolderPath():
     appdata_folder = getAppdataFolderPath()
