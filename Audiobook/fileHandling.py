@@ -3,14 +3,16 @@ import sys
 
 def getAppdataFolderPath():
     if sys.platform == "win32":
-        # Windows path
         base_path = os.environ.get("APPDATA")
     else:
-        # Linux / Mac path
         base_path = os.path.expanduser("~/.local/share")
         
-    # Ensure this matches whatever folder name you were originally using
-    return os.path.join(base_path, "AudiobookReader")
+    final_path = os.path.join(base_path, "AudiobookReader")
+    
+    # Create the folder (and any missing parent folders) if it doesn't exist
+    os.makedirs(final_path, exist_ok=True)
+    
+    return final_path
 
 def getBooksFolderPath():
     appdata_folder = getAppdataFolderPath()
