@@ -39,7 +39,7 @@ jobs:
     - name: Build with PyInstaller (Windows)
       if: runner.os == 'Windows'
       # --windowed hides the console prompt for your GUI app
-      run: pyinstaller --windowed --name AudiobookReader-windows application.py
+      run: pyinstaller --windowed --name AudiobookReader-windows Audiobook/application.py
 
     - name: Zip the Windows Build
       if: runner.os == 'Windows'
@@ -47,7 +47,7 @@ jobs:
 
     - name: Build with PyInstaller (Linux)
       if: runner.os == 'Linux'
-      run: pyinstaller --windowed --name AudiobookReader-linux application.py
+      run: pyinstaller --windowed --name AudiobookReader-linux Audiobook/application.py
 
     - name: Zip the Linux Build
       if: runner.os == 'Linux'
