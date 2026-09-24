@@ -11,7 +11,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # ubuntu-20.04 ensures the Linux build works on older and newer distros
         os: [ubuntu-20.04, windows-latest]
 
     steps:
@@ -25,7 +24,6 @@ jobs:
 
     - name: Install System Dependencies (Linux only)
       if: runner.os == 'Linux'
-      # Audio libraries on Linux require this system package to compile correctly
       run: |
         sudo apt-get update
         sudo apt-get install -y libasound2-dev
@@ -38,28 +36,27 @@ jobs:
 
     - name: Build with PyInstaller (Windows)
       if: runner.os == 'Windows'
-      # --windowed hides the console prompt for your GUI app
-      run: pyinstaller --windowed --name AudiobookReader-windows Audiobook/application.py
+      run: pyinstaller --windowed --name audiobook-app-windows --collect-all piper --collect-all espeakng_loader Audiobook/application.py
 
     - name: Zip the Windows Build
       if: runner.os == 'Windows'
-      run: Compress-Archive -Path dist/AudiobookReader-windows/* -DestinationPath dist/AudiobookReader-windows.zip
+      run: Compress-Archive -Path dist/audiobook-app-windows/* -DestinationPath dist/audiobook-app-windows.zip
 
     - name: Build with PyInstaller (Linux)
       if: runner.os == 'Linux'
-      run: pyinstaller --windowed --name AudiobookReader-linux Audiobook/application.py
+      run: pyinstaller --windowed --name audiobook-app-linux --collect-all piper --collect-all espeakng_loader Audiobook/application.py
 
     - name: Zip the Linux Build
       if: runner.os == 'Linux'
       run: |
         cd dist
-        zip -r AudiobookReader-linux.zip AudiobookReader-linux/
+        zip -r audiobook-app-linux.zip audiobook-app-linux/
 
     - name: Upload to GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          dist/AudiobookReader-windows.zip
-          dist/AudiobookReader-linux.zip
+          dist/audiobook-app-windows.zip
+          dist/audiobook-app-linux.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
