@@ -94,16 +94,16 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_3.addWidget(self.label)
 
-        self.comboBox = QComboBox(self.Settings)
-        self.comboBox.setObjectName(u"comboBox")
+        self.voicesComboBox = QComboBox(self.Settings)
+        self.voicesComboBox.setObjectName(u"voicesComboBox")
         sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         sizePolicy1.setHorizontalStretch(0)
         sizePolicy1.setVerticalStretch(0)
-        sizePolicy1.setHeightForWidth(self.comboBox.sizePolicy().hasHeightForWidth())
-        self.comboBox.setSizePolicy(sizePolicy1)
-        self.comboBox.setInsertPolicy(QComboBox.InsertPolicy.InsertAfterCurrent)
+        sizePolicy1.setHeightForWidth(self.voicesComboBox.sizePolicy().hasHeightForWidth())
+        self.voicesComboBox.setSizePolicy(sizePolicy1)
+        self.voicesComboBox.setInsertPolicy(QComboBox.InsertPolicy.InsertAfterCurrent)
 
-        self.horizontalLayout_3.addWidget(self.comboBox)
+        self.horizontalLayout_3.addWidget(self.voicesComboBox)
 
         self.verticalLayout = QVBoxLayout()
         self.verticalLayout.setSpacing(0)

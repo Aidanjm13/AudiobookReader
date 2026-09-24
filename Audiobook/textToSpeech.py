@@ -17,7 +17,7 @@ import wave
 from pathlib import Path
 import numpy as np
 from fileHandling import getAppdataFolderPath
-from piperVoices import parsePiperVoiceString
+from piperVoices import parsePiperVoiceString, loadVoices, refreshPiperVoicesJSON, getPiperVoicePaths
 
 TARGET_SAMPLE_RATE = 48000  # Default standard output sample rate
 TARGET_CHANNELS = 2
@@ -186,6 +186,10 @@ def set_active_engine(engine: str, **kwargs):
     _ENGINE_CONFIG["engine"] = engine
     _ENGINE_CONFIG.update(kwargs)
 
+def update_model(engine, model):
+    _ENGINE_CONFIG["engine"] = engine
+    _ENGINE_CONFIG["model"] = model
+
 
 def SynthesizeText(text: str) -> bytes:
     speed = _ENGINE_CONFIG.get("speed", 1.0)
@@ -228,3 +232,52 @@ def scan_downloaded_voices() -> dict:
                     downloaded[voice_str] = size_mb
                     
     return downloaded
+
+#same as scan, but doesnt care about file size
+def get_downloaded_voices():
+    """
+    Scans the voices directory ONCE and returns a list of downloaded voice strings.
+    Example return: ['en_US-amy-low', 'ar_JO-naomi-medium']
+    """
+    downloaded = []
+    if not os.path.exists(VOICES_DIR):
+        return downloaded
+
+    with os.scandir(VOICES_DIR) as entries:
+        for entry in entries:
+            if entry.is_file() and entry.name.endswith(".onnx"):
+                voice_str = entry.name[:-5] # Strip off the '.onnx'
+                
+                # Verify the config json also exists
+                json_path = os.path.join(VOICES_DIR, f"{voice_str}.onnx.json")
+                if os.path.exists(json_path):
+                    downloaded.append(voice_str)
+                    
+    return downloaded
+
+#gets all voices, including ones that are downloaded from JSON file
+def get_available_voices():
+    voices = loadVoices() #gets piper voices
+    if voices is None:
+        print("Failed to load voices. Please check your internet connection or try again later.")
+        return []
+    #once kokoro voices are added add kokoro voices to this
+    return voices
+
+#reloads available voices, currently for piper add kokoro later
+def reload_available_voices():
+    refreshPiperVoicesJSON()
+
+#gets the file paths of the voice models for the model string, add kokoro logic later
+def get_voice_paths(voice_string: str) -> tuple[str, str]:
+    return getPiperVoicePaths(voice_string)
+
+#parses the voice string between region and model parts, add kokoro logic later
+def parse_voice_string(voice_string: str):
+    return parsePiperVoiceString(voice_string)
+
+#downloads the voice depending on the model it is for, add kokoro logic
+def download_voice(voice_string: str):
+    #if piper:
+    lang, region, speaker, quality = parse_voice_string(voice_string)
+    ensure_piper_voice(lang, region, speaker, quality)

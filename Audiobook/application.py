@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QMainWindow, QApplication, QPushButton, QGridLayout, QSizePolicy, QFileDialog
 from PySide6.QtGui import QIcon
+from PySide6 import QtWidgets
 from PySide6.QtCore import QSize, Qt, QTimer, QIODevice
 from PySide6.QtMultimedia import QAudioSink, QAudioFormat, QMediaDevices, QAudio
 from AudioBuffer import SAMPLE_RATE, StreamingAudioBuffer
@@ -12,7 +13,7 @@ from epubReader import getBook, getLanguages, getCreators, getTitles, save_cover
 import os
 from bookPages import buildPages, getCurrentPageItems, goNextPage, goPrevPage, loadChapterStart, getCurrentPage, closeBook
 from ttsWorker import get_tts_worker, tts_set_page
-from textToSpeech import set_audio_format
+from textToSpeech import set_audio_format, get_available_voices, scan_downloaded_voices, get_downloaded_voices, reload_available_voices, parse_voice_string, get_voice_paths, download_voice, update_model
 
 SUPPORTED_FILE_TYPES = {"epub"}
 
@@ -37,6 +38,13 @@ class MainWindow(QMainWindow):
         self.openBookWindows = []
         if(num_settings() == 0):
             add_settings("Default", 1.0, 1.0, "piper", "en_US-lessac-medium", 16, "default", True)
+
+        self.ui.RefreshVoiceButton.clicked.connect(self.handle_refresh_voices)
+        self.ui.DownloadDeleteVoiceButton.clicked.connect(self.handle_action_button)
+        self.ui.voicesComboBox.currentIndexChanged.connect(self.update_ui_state)
+
+        # 2. Populate on launch
+        self.populate_voices_dropdown()
 
     def on_upload_clicked(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -145,6 +153,104 @@ class MainWindow(QMainWindow):
         new_window.show()
         self.openBookWindows.append(new_window)
 
+    def populate_voices_dropdown(self):
+        """Loads voices, sorts downloaded ones to the top with file sizes."""
+        voices = get_available_voices()
+
+        downloaded_voices = []
+        available_voices = []
+
+        # 1. Read the disk exactly ONCE
+        local_inventory = scan_downloaded_voices()
+
+        self.ui.voicesComboBox.blockSignals(True)
+        self.ui.voicesComboBox.clear()
+
+        # 1. Add Downloaded Voices First
+        # Store as: userData=(raw_string, True)
+        has_downloaded = False
+        for voice_str in voices:
+            if voice_str in local_inventory:
+                size_mb = local_inventory[voice_str]
+                display_text = f"{voice_str} ({size_mb:.1f} MB)"
+                self.ui.voicesComboBox.addItem(display_text, userData=(voice_str, True))
+                has_downloaded = True
+
+        # Add Separator if needed
+        if has_downloaded and len(local_inventory) < len(voices):
+            self.ui.voicesComboBox.addItem("--- Available to Download ---", userData=None)
+
+        # 2. Add Available Voices
+        # Store as: userData=(raw_string, False)
+        for voice_str in voices:
+            if voice_str not in local_inventory:
+                self.ui.voicesComboBox.addItem(voice_str, userData=(voice_str, False))
+
+        self.ui.voicesComboBox.blockSignals(False)
+        self.update_ui_state()
+
+    def update_ui_state(self):
+        """Instantly updates button based on the tuple stored in the dropdown."""
+        item_data = self.ui.voicesComboBox.currentData()
+        
+        if not item_data: # Separator selected
+            self.ui.DownloadDeleteVoiceButton.setEnabled(False)
+            self.ui.DownloadDeleteVoiceButton.setText("Select a Voice")
+            return
+            
+        self.ui.DownloadDeleteVoiceButton.setEnabled(True)
+        
+        # Unpack the tuple we stored during population
+        raw_string, is_downloaded = item_data
+        
+        if is_downloaded:
+            self.ui.DownloadDeleteVoiceButton.setText("Delete")
+        else:
+            self.ui.DownloadDeleteVoiceButton.setText("Download")
+
+    def handle_action_button(self):
+        item_data = self.ui.voicesComboBox.currentData()
+        if not item_data:
+            return
+            
+        raw_string, is_downloaded = item_data
+        
+        if is_downloaded:
+            # DELETE LOGIC
+            onnx_path, json_path = get_voice_paths(raw_string)
+            
+            if os.path.exists(onnx_path): os.remove(onnx_path)
+            if os.path.exists(json_path): os.remove(json_path)
+            
+            self.populate_voices_dropdown() 
+            
+        else:
+            # DOWNLOAD LOGIC
+
+            lang, region, speaker, quality = parse_voice_string(raw_string)
+            self.ui.DownloadDeleteVoiceButton.setEnabled(False)
+            QtWidgets.QApplication.processEvents() 
+            
+            try:
+                download_voice(raw_string)
+                self.populate_voices_dropdown() 
+            except Exception as e:
+                print(f"Download failed: {e}")
+            finally:
+                self.ui.DownloadDeleteVoiceButton.setEnabled(True)
+
+    def handle_refresh_voices(self):
+        """Fetches fresh list from Hugging Face and updates combo box."""
+        self.ui.RefreshVoiceButton.setEnabled(False)
+
+        try:
+            reload_available_voices()
+            self.populate_voices_dropdown()
+        except Exception as e:
+            print(f"Failed to refresh: {e}")
+        finally:
+            self.ui.RefreshVoiceButton.setEnabled(True)
+
 
 class BookWindow(QMainWindow):
     def __init__(self, book_id, parent=None):
@@ -230,8 +336,8 @@ class BookWindow(QMainWindow):
         self.ui.volumeSpin.setValue(self.settings.volume)
         self.ui.speedSpin.setValue(self.settings.speed)
 
-
-    
+        self.populate_voices_selection()
+        self.ui.VoiceSelect.currentIndexChanged.connect(self.on_voice_change)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -485,6 +591,19 @@ class BookWindow(QMainWindow):
         }
         if self.sink:
             print(f"[QAudioSink] State: {state_names.get(state, state)} | Error: {self.sink.error()}")
+
+    def populate_voices_selection(self):
+        voices = get_downloaded_voices()
+        self.ui.VoiceSelect.clear()
+        for voice in voices:
+            self.ui.VoiceSelect.addItem(voice)
+
+    def on_voice_change(self):
+        selected_voice = self.ui.VoiceSelect.currentText()
+        update_settings(self.settings.id, voice_model=selected_voice)
+        update_model("piper", selected_voice)
+        self.stop_audio()
+        
 
 if __name__ == "__main__":
     app = QApplication([])

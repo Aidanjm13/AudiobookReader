@@ -34,7 +34,7 @@ def refreshPiperVoicesJSON():
     except requests.exceptions.RequestException as e:
         print(f"Network error while refreshing voices: {e}")
         # In a real app, you might want to show a UI popup here
-        return None
+        return []
 
 
 def parsePiperVoiceString(voice_string: str):
@@ -68,3 +68,15 @@ def loadVoices():
     except json.JSONDecodeError:
         print("Cache file is corrupted. Re-downloading...")
         return refreshPiperVoicesJSON()
+
+def getPiperVoicePaths(voice_string: str) -> tuple[str, str]:
+    """Returns the expected (onnx_path, json_path) for a voice string."""
+    lang, region, speaker, quality = parsePiperVoiceString(voice_string)
+    voice_code = f"{lang}_{region}" if region else lang
+    name = f"{voice_code}-{speaker}-{quality}"
+    
+    onnx_path = os.path.join(VOICES_DIR, f"{name}.onnx")
+    json_path = os.path.join(VOICES_DIR, f"{name}.onnx.json")
+    if not os.path.exists(onnx_path):
+        return None
+    return onnx_path, json_path
