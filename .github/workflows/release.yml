@@ -55,8 +55,6 @@ jobs:
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/AudiobookReader-Linux.zip
-            dist/AudiobookReader-Windows.zip
+          files: dist/AudiobookReader-${{ runner.os }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
