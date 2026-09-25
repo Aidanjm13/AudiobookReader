@@ -10,6 +10,7 @@ jobs:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      max-parallel: 1 # Forces sequential builds to avoid the race condition
       matrix:
         os: [ubuntu-22.04, windows-latest]
 
