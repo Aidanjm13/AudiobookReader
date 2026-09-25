@@ -34,7 +34,7 @@ jobs:
         # --windowed hides the background terminal
         run: >
           pyinstaller --onefile --windowed 
-          --name audiobook-app-${{ runner.os }} 
+          --name AudiobookReader-${{ runner.os }} 
           --collect-all shiboken6 
           --collect-all piper 
           --collect-all espeakng_loader 
