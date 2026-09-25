@@ -3,7 +3,7 @@ import sys
 
 def getAppdataFolderPath():
     if sys.platform == "win32":
-        base_path = os.environ.get("APPDATA")
+        base_path = os.environ.get("LOCALAPPDATA")
     else:
         base_path = os.path.expanduser("~/.local/share")
         

@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' # Triggers automatically when you push a v* tag
 
 jobs:
   build:
@@ -14,49 +14,49 @@ jobs:
         os: [ubuntu-22.04, windows-latest]
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
 
-    - name: Install System Dependencies (Linux only)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libasound2-dev
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-    - name: Install Python Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
+      - name: Build Executable with PyInstaller
+        # --onefile packages everything into a single clean executable
+        # --windowed hides the background terminal
+        run: >
+          pyinstaller --onefile --windowed 
+          --name audiobook-app-${{ runner.os }} 
+          --collect-all shiboken6 
+          --collect-all piper 
+          --collect-all espeakng_loader 
+          Audiobook/application.py
 
-    - name: Build with PyInstaller (Windows)
-      if: runner.os == 'Windows'
-      run: pyinstaller --windowed --name AudiobookReader-windows --collect-all piper --collect-all espeakng_loader Audiobook/application.py
+      - name: Zip Linux Executable
+        if: runner.os == 'Linux'
+        run: |
+          cd dist
+          zip AudiobookReader-Linux.zip AudiobookReader-Linux
 
-    - name: Zip the Windows Build
-      if: runner.os == 'Windows'
-      run: Compress-Archive -Path dist/AudiobookReader-windows/* -DestinationPath dist/AudiobookReader-windows.zip
+      - name: Zip Windows Executable
+        if: runner.os == 'Windows'
+        run: |
+          cd dist
+          Compress-Archive -Path AudiobookReader-Windows.exe -DestinationPath AudiobookReader-Windows.zip
 
-    - name: Build with PyInstaller (Linux)
-      if: runner.os == 'Linux'
-      run: pyinstaller --windowed --name AudiobookReader-linux --collect-all piper --collect-all espeakng_loader Audiobook/application.py
-
-    - name: Zip the Linux Build
-      if: runner.os == 'Linux'
-      run: |
-        cd dist
-        zip -r AudiobookReader-linux.zip AudiobookReader-linux/
-
-    - name: Upload to GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          dist/AudiobookReader-windows.zip
-          dist/AudiobookReader-linux.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/AudiobookReader-Linux.zip
+            dist/AudiobookReader-Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
