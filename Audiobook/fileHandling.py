@@ -7,12 +7,14 @@ def getAppdataFolderPath():
     else:
         base_path = os.path.expanduser("~/.local/share")
         
-    final_path = os.path.join(base_path, "AudiobookReader")
+    company = "Aidanjm13"
+    app_name = "AudiobookReader"
+    folder_path = os.path.join(base_path, company, app_name)
     
     # Create the folder (and any missing parent folders) if it doesn't exist
-    os.makedirs(final_path, exist_ok=True)
+    os.makedirs(folder_path, exist_ok=True)
     
-    return final_path
+    return folder_path
 
 def getBooksFolderPath():
     appdata_folder = getAppdataFolderPath()
