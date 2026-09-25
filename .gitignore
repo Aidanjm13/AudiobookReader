@@ -14,3 +14,10 @@ __pycache__/
 dist/
 build/
 *.spec
+# WSL and build folders
+.venv-linux/
+.venv/
+dist/
+build/
+__pycache__/
+*.pyc
