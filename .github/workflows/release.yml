@@ -3,14 +3,16 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # Triggers automatically when you push a v* tag
+      - 'v*'
 
 jobs:
+  # ---------------------------------------------------------
+  # JOB 1: Build the Executables
+  # ---------------------------------------------------------
   build:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      max-parallel: 1 # Forces sequential builds to avoid the race condition
       matrix:
         os: [ubuntu-22.04, windows-latest]
 
@@ -31,8 +33,6 @@ jobs:
           pip install pyinstaller
 
       - name: Build Executable with PyInstaller
-        # --onefile packages everything into a single clean executable
-        # --windowed hides the background terminal
         run: >
           pyinstaller --onefile --windowed 
           --name AudiobookReader-${{ runner.os }} 
@@ -53,9 +53,31 @@ jobs:
           cd dist
           Compress-Archive -Path AudiobookReader-Windows.exe -DestinationPath AudiobookReader-Windows.zip
 
+      # Upload to a temporary holding area (Artifacts)
+      - name: Upload Artifact to Holding Area
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-${{ runner.os }}
+          path: dist/AudiobookReader-*.zip
+          retention-days: 1
+
+  # ---------------------------------------------------------
+  # JOB 2: Publish the Release
+  # ---------------------------------------------------------
+  release:
+    name: Create GitHub Release
+    needs: build # Waits for both Linux and Windows to finish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts from Holding Area
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true # Combines Windows and Linux zips into one folder
+
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/AudiobookReader-${{ runner.os }}.zip
+          files: dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
